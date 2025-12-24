@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"log"
 	"os"
 	"os/exec"
@@ -11,6 +12,8 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
+
+	"github.com/fsnotify/fsnotify"
 
 	"115togd/internal/store"
 )
@@ -68,6 +71,10 @@ func (w *ruleWorker) run(ctx context.Context) {
 	defer scanTicker.Stop()
 	schedTicker := time.NewTicker(settings.SchedulerTick)
 	defer schedTicker.Stop()
+
+	if w.rule.SrcKind == "local" && w.rule.LocalWatch {
+		go w.watchLocal(ctx)
+	}
 
 	// Prime: run a scan soon.
 	w.triggerScan()
@@ -201,6 +208,76 @@ func (w *ruleWorker) startOneJob(ctx context.Context) {
 	_ = w.st.ClearJobOnDone(ctx, jobID)
 }
 
+func (w *ruleWorker) watchLocal(ctx context.Context) {
+	root := strings.TrimSpace(w.rule.SrcLocalRoot)
+	if root == "" {
+		return
+	}
+	watcher, err := fsnotify.NewWatcher()
+	if err != nil {
+		log.Printf("rule %s: local watch: %v", w.rule.ID, err)
+		return
+	}
+	defer watcher.Close()
+
+	addDir := func(p string) {
+		if err := watcher.Add(p); err != nil {
+			// ignore
+		}
+	}
+
+	_ = filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+		if d.IsDir() {
+			addDir(p)
+		}
+		return nil
+	})
+
+	debounce := time.NewTimer(0)
+	if !debounce.Stop() {
+		<-debounce.C
+	}
+	pending := false
+	trigger := func() {
+		if pending {
+			return
+		}
+		pending = true
+		debounce.Reset(600 * time.Millisecond)
+	}
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case err := <-watcher.Errors:
+			if err != nil {
+				log.Printf("rule %s: local watch error: %v", w.rule.ID, err)
+			}
+		case ev := <-watcher.Events:
+			// Watch new directories recursively.
+			if ev.Op&(fsnotify.Create|fsnotify.Rename) != 0 {
+				fi, err := os.Stat(ev.Name)
+				if err == nil && fi.IsDir() {
+					_ = filepath.WalkDir(ev.Name, func(p string, d fs.DirEntry, err error) error {
+						if err == nil && d.IsDir() {
+							addDir(p)
+						}
+						return nil
+					})
+				}
+			}
+			trigger()
+		case <-debounce.C:
+			pending = false
+			w.triggerScan()
+		}
+	}
+}
+
 type jobResult struct {
 	BytesDone int64
 	AvgSpeed  float64
@@ -208,7 +285,12 @@ type jobResult struct {
 }
 
 func (w *ruleWorker) runWithMetrics(ctx context.Context, settings store.RuntimeSettings, port int, filesFromPath, logPath, jobID string) jobResult {
-	src := fmt.Sprintf("%s:%s", w.rule.SrcRemote, w.rule.SrcPath)
+	var src string
+	if w.rule.SrcKind == "local" {
+		src = w.rule.SrcLocalRoot
+	} else {
+		src = fmt.Sprintf("%s:%s", w.rule.SrcRemote, w.rule.SrcPath)
+	}
 	dst := fmt.Sprintf("%s:%s", w.rule.DstRemote, w.rule.DstPath)
 
 	args := []string{

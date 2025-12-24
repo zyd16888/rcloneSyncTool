@@ -54,8 +54,11 @@ func (r *Remote) UnmarshalConfig() error {
 
 type Rule struct {
 	ID              string
+	SrcKind         string
 	SrcRemote       string
 	SrcPath         string
+	SrcLocalRoot    string
+	LocalWatch      bool
 	DstRemote       string
 	DstPath         string
 	TransferMode    string
@@ -71,10 +74,18 @@ type Rule struct {
 
 func (r *Rule) Normalize() error {
 	r.ID = strings.TrimSpace(r.ID)
+	r.SrcKind = strings.TrimSpace(strings.ToLower(r.SrcKind))
+	if r.SrcKind == "" {
+		r.SrcKind = "remote"
+	}
+	if r.SrcKind != "remote" && r.SrcKind != "local" {
+		return fmt.Errorf("invalid src_kind: %q", r.SrcKind)
+	}
 	r.SrcRemote = strings.TrimSpace(r.SrcRemote)
 	r.SrcPath = cleanRemotePath(r.SrcPath)
 	r.DstRemote = strings.TrimSpace(r.DstRemote)
 	r.DstPath = cleanRemotePath(r.DstPath)
+	r.SrcLocalRoot = strings.TrimSpace(r.SrcLocalRoot)
 	r.TransferMode = strings.TrimSpace(strings.ToLower(r.TransferMode))
 	if r.TransferMode == "" {
 		r.TransferMode = "copy"
@@ -86,11 +97,25 @@ func (r *Rule) Normalize() error {
 	if r.ID == "" {
 		return errors.New("rule id required")
 	}
-	if r.SrcRemote == "" || r.DstRemote == "" {
-		return errors.New("src_remote and dst_remote required")
+	if r.SrcKind == "remote" {
+		if r.SrcRemote == "" {
+			return errors.New("src_remote required for src_kind=remote")
+		}
+		if r.SrcPath == "" {
+			return errors.New("src_path required for src_kind=remote")
+		}
 	}
-	if r.SrcPath == "" || r.DstPath == "" {
-		return errors.New("src_path and dst_path required")
+	if r.SrcKind == "local" {
+		if r.SrcLocalRoot == "" {
+			return errors.New("src_local_root required for src_kind=local")
+		}
+		// Allow src_remote/src_path to be empty for local rules.
+	}
+	if r.DstRemote == "" {
+		return errors.New("dst_remote required")
+	}
+	if r.DstPath == "" {
+		return errors.New("dst_path required")
 	}
 	if r.MaxParallelJobs <= 0 {
 		r.MaxParallelJobs = 1

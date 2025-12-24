@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"log"
 	"net/http"
+	"net/url"
 	"path"
 	"fmt"
 	"strconv"
@@ -139,13 +140,7 @@ func (s *Server) dashboard(c *gin.Context) {
 		rows = append(rows, ruleRow{Rule: rule, Counts: counts})
 	}
 	jobsPage := atoiDefault(c.Query("jobs_page"), 1)
-	jobsPageSize := atoiDefault(c.Query("jobs_page_size"), 20)
-	if jobsPageSize <= 0 {
-		jobsPageSize = 20
-	}
-	if jobsPageSize > 50 {
-		jobsPageSize = 50
-	}
+	jobsPageSize := normalizePageSize(c.Query("jobs_page_size"), 20)
 	if jobsPage <= 0 {
 		jobsPage = 1
 	}
@@ -234,6 +229,8 @@ func (s *Server) ruleEditGet(c *gin.Context) {
 	}
 	if rule.ID == "" {
 		rule.Enabled = true
+		rule.SrcKind = "remote"
+		rule.LocalWatch = true
 		rule.TransferMode = "copy"
 		rule.MaxParallelJobs = 1
 		rule.ScanIntervalSec = 15
@@ -253,8 +250,11 @@ func (s *Server) ruleSavePost(c *gin.Context) {
 	ctx := c.Request.Context()
 	rule := store.Rule{
 		ID:              c.PostForm("id"),
+		SrcKind:         c.PostForm("src_kind"),
 		SrcRemote:       c.PostForm("src_remote"),
 		SrcPath:         c.PostForm("src_path"),
+		SrcLocalRoot:    c.PostForm("src_local_root"),
+		LocalWatch:      store.ParseEnabled(c.PostForm("local_watch_enabled")),
 		DstRemote:       c.PostForm("dst_remote"),
 		DstPath:         c.PostForm("dst_path"),
 		TransferMode:    c.PostForm("transfer_mode"),
@@ -309,17 +309,17 @@ func (s *Server) ruleRetryFailedPost(c *gin.Context) {
 func (s *Server) jobsList(c *gin.Context) {
 	ctx := c.Request.Context()
 	page := atoiDefault(c.Query("page"), 1)
-	pageSize := atoiDefault(c.Query("page_size"), 50)
-	if pageSize <= 0 {
-		pageSize = 50
-	}
-	if pageSize > 200 {
-		pageSize = 200
-	}
+	pageSize := normalizePageSize(c.Query("page_size"), 50)
 	if page <= 0 {
 		page = 1
 	}
-	total, _ := s.st.CountJobs(ctx)
+	filter := store.JobFilter{
+		RuleID:       strings.TrimSpace(c.Query("rule_id")),
+		Status:       normalizeJobStatus(c.Query("status")),
+		TransferMode: normalizeTransferMode(c.Query("mode")),
+		Query:        strings.TrimSpace(c.Query("q")),
+	}
+	total, _ := s.st.CountJobsFiltered(ctx, filter)
 	totalPages := (total + pageSize - 1) / pageSize
 	if totalPages <= 0 {
 		totalPages = 1
@@ -328,7 +328,7 @@ func (s *Server) jobsList(c *gin.Context) {
 		page = totalPages
 	}
 	offset := (page - 1) * pageSize
-	jobs, _ := s.st.ListJobsPage(ctx, pageSize, offset)
+	jobs, _ := s.st.ListJobsPageFiltered(ctx, pageSize, offset, filter)
 	type row struct {
 		Job    store.Job
 		Metric store.JobMetric
@@ -341,18 +341,73 @@ func (s *Server) jobsList(c *gin.Context) {
 	}
 	hasPrev := page > 1
 	hasNext := page < totalPages
+	rules, _ := s.st.ListRules(ctx)
+	prevURL := s.jobsListURL(page-1, pageSize, filter)
+	nextURL := s.jobsListURL(page+1, pageSize, filter)
 	s.render(c, "jobs", map[string]any{
 		"Active": "jobs",
 		"Jobs": rows,
+		"Rules": rules,
+		"F": filter,
 		"Page": page,
 		"PageSize": pageSize,
 		"Total": total,
 		"TotalPages": totalPages,
 		"HasPrev": hasPrev,
 		"HasNext": hasNext,
-		"PrevURL": fmt.Sprintf("/jobs?page=%d&page_size=%d", maxInt(1, page-1), pageSize),
-		"NextURL": fmt.Sprintf("/jobs?page=%d&page_size=%d", minInt(totalPages, page+1), pageSize),
+		"PrevURL": prevURL,
+		"NextURL": nextURL,
 	})
+}
+
+func normalizePageSize(s string, def int) int {
+	size := atoiDefault(s, def)
+	switch size {
+	case 10, 20, 50, 100:
+		return size
+	default:
+		return def
+	}
+}
+
+func normalizeJobStatus(s string) string {
+	switch strings.TrimSpace(strings.ToLower(s)) {
+	case "running", "done", "failed":
+		return strings.TrimSpace(strings.ToLower(s))
+	default:
+		return ""
+	}
+}
+
+func normalizeTransferMode(s string) string {
+	switch strings.TrimSpace(strings.ToLower(s)) {
+	case "copy", "move":
+		return strings.TrimSpace(strings.ToLower(s))
+	default:
+		return ""
+	}
+}
+
+func (s *Server) jobsListURL(page, pageSize int, f store.JobFilter) string {
+	if page <= 0 {
+		page = 1
+	}
+	v := url.Values{}
+	v.Set("page", fmt.Sprintf("%d", page))
+	v.Set("page_size", fmt.Sprintf("%d", pageSize))
+	if strings.TrimSpace(f.RuleID) != "" {
+		v.Set("rule_id", strings.TrimSpace(f.RuleID))
+	}
+	if strings.TrimSpace(f.Status) != "" {
+		v.Set("status", strings.TrimSpace(f.Status))
+	}
+	if strings.TrimSpace(f.TransferMode) != "" {
+		v.Set("mode", strings.TrimSpace(f.TransferMode))
+	}
+	if strings.TrimSpace(f.Query) != "" {
+		v.Set("q", strings.TrimSpace(f.Query))
+	}
+	return "/jobs?" + v.Encode()
 }
 
 func minInt(a, b int) int {

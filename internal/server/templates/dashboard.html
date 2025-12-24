@@ -44,7 +44,13 @@
     <td><a href="/rules/edit?id={{.Rule.ID}}">{{.Rule.ID}}</a></td>
     <td>{{if .Rule.Enabled}}是{{else}}否{{end}}</td>
     <td>{{.Rule.TransferMode}}</td>
-    <td class="muted">{{.Rule.SrcRemote}}:{{.Rule.SrcPath}} → {{.Rule.DstRemote}}:{{.Rule.DstPath}}</td>
+    <td class="muted">
+      {{if eq .Rule.SrcKind "local"}}
+        local:{{.Rule.SrcLocalRoot}} → {{.Rule.DstRemote}}:{{.Rule.DstPath}}
+      {{else}}
+        {{.Rule.SrcRemote}}:{{.Rule.SrcPath}} → {{.Rule.DstRemote}}:{{.Rule.DstPath}}
+      {{end}}
+    </td>
     <td class="muted">{{.Rule.MaxParallelJobs}}</td>
     <td class="muted">新={{.Counts.New}} 稳定={{.Counts.Stable}} 排队={{.Counts.Queued}} 传输中={{.Counts.Transferring}} 完成={{.Counts.Done}} 失败={{.Counts.Failed}}</td>
   </tr>
@@ -83,7 +89,21 @@
 
     <div class="toolbar" style="justify-content: space-between; margin-top: 10px;">
       <div class="muted">共 {{.JobsTotal}} 条，页大小 {{.JobsPageSize}}，第 {{.JobsPage}} / {{.JobsTotalPages}} 页</div>
-      <div>
+      <div style="display:flex; gap:8px; align-items:center;">
+        <form class="layui-form" method="get" action="/" style="display:flex; gap:8px; align-items:center;">
+          <div class="layui-input-inline" style="width:120px;">
+            <select name="jobs_page_size" lay-filter="jobsPageSize">
+              <option value="10" {{if eq .JobsPageSize 10}}selected{{end}}>10 / 页</option>
+              <option value="20" {{if eq .JobsPageSize 20}}selected{{end}}>20 / 页</option>
+              <option value="50" {{if eq .JobsPageSize 50}}selected{{end}}>50 / 页</option>
+              <option value="100" {{if eq .JobsPageSize 100}}selected{{end}}>100 / 页</option>
+            </select>
+          </div>
+          <div class="layui-input-inline" style="width:120px;">
+            <input type="number" min="1" max="{{.JobsTotalPages}}" name="jobs_page" value="{{.JobsPage}}" class="layui-input" placeholder="跳转页码">
+          </div>
+          <button class="layui-btn layui-btn-primary layui-btn-sm" type="submit">跳转</button>
+        </form>
         {{if .JobsHasPrev}}
           <a class="layui-btn layui-btn-primary layui-btn-sm" href="{{.JobsPrevURL}}">上一页</a>
         {{else}}
@@ -99,4 +119,15 @@
     </div>
   </div>
 </div>
+
+<script>
+  layui.use(['form'], function(){
+    const form = layui.form;
+    form.render();
+    form.on('select(jobsPageSize)', function(){
+      const f = document.querySelector('form[action="/"]');
+      if (f) f.submit();
+    });
+  });
+</script>
 {{end}}

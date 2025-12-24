@@ -106,8 +106,11 @@ func (s *Supervisor) reconcile(ctx context.Context) {
 
 func ruleSame(a, b store.Rule) bool {
 	return a.ID == b.ID &&
+		a.SrcKind == b.SrcKind &&
 		a.SrcRemote == b.SrcRemote &&
 		a.SrcPath == b.SrcPath &&
+		a.SrcLocalRoot == b.SrcLocalRoot &&
+		a.LocalWatch == b.LocalWatch &&
 		a.DstRemote == b.DstRemote &&
 		a.DstPath == b.DstPath &&
 		a.TransferMode == b.TransferMode &&

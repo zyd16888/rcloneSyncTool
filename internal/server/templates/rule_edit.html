@@ -13,6 +13,16 @@
   <div class="layui-card-body">
     <form class="layui-form" method="post" action="/rules/save">
       <div class="layui-form-item">
+        <label class="layui-form-label">源类型</label>
+        <div class="layui-input-block">
+          <select name="src_kind" lay-filter="srcKind">
+            <option value="remote" {{if eq .Rule.SrcKind "remote"}}selected{{end}}>remote（远端）</option>
+            <option value="local" {{if eq .Rule.SrcKind "local"}}selected{{end}}>local（本地目录）</option>
+          </select>
+          <div class="muted" style="margin-top:6px">remote：用 <code>remote:path</code> 扫描；local：监控/扫描本机目录后传到目标 remote。</div>
+        </div>
+      </div>
+      <div class="layui-form-item">
         <label class="layui-form-label">规则 ID</label>
         <div class="layui-input-block">
           <input type="text" name="id" value="{{.Rule.ID}}" placeholder="例如：ruleA" autocomplete="off" class="layui-input">
@@ -36,19 +46,40 @@
           </select>
         </div>
       </div>
-      <div class="layui-form-item">
+
+      <div id="srcRemoteFields">
+        <div class="layui-form-item">
         <label class="layui-form-label">源端</label>
         <div class="layui-input-block">
           <input type="text" name="src_remote" value="{{.Rule.SrcRemote}}" list="remoteList" autocomplete="off" class="layui-input" placeholder="例如：src">
         </div>
-      </div>
-      <div class="layui-form-item">
+        </div>
+        <div class="layui-form-item">
         <label class="layui-form-label">src_path</label>
         <div class="layui-input-block">
           <input type="text" name="src_path" value="{{.Rule.SrcPath}}" placeholder="/Source/A" autocomplete="off" class="layui-input">
           <div class="muted" style="margin-top:6px">源端目录（相对于 src_remote 的根），建议以 <code>/</code> 开头。</div>
         </div>
+        </div>
       </div>
+
+      <div id="srcLocalFields">
+        <div class="layui-form-item">
+          <label class="layui-form-label">本地目录</label>
+          <div class="layui-input-block">
+            <input type="text" name="src_local_root" value="{{.Rule.SrcLocalRoot}}" placeholder="例如：D:\\data\\watch 或 /data/watch" autocomplete="off" class="layui-input">
+            <div class="muted" style="margin-top:6px">扫描/传输时以该目录作为源根目录；会把文件的相对路径写入 <code>--files-from</code>。</div>
+          </div>
+        </div>
+        <div class="layui-form-item">
+          <label class="layui-form-label">本地监控</label>
+          <div class="layui-input-block">
+            <input type="checkbox" name="local_watch_enabled" value="1" lay-skin="switch" lay-text="开|关" {{if .Rule.LocalWatch}}checked{{end}}>
+            <div class="muted" style="margin-top:6px">开启后监听本地目录变化（触发一次快速扫描）；仍会按“扫描间隔”兜底扫描。</div>
+          </div>
+        </div>
+      </div>
+
       <div class="layui-form-item">
         <label class="layui-form-label">目标端</label>
         <div class="layui-input-block">
@@ -111,4 +142,19 @@
     </form>
   </div>
 </div>
+
+<script>
+  layui.use(['form'], function(){
+    const form = layui.form;
+    function applySrcKind(kind) {
+      const isLocal = kind === "local";
+      document.getElementById("srcRemoteFields").style.display = isLocal ? "none" : "";
+      document.getElementById("srcLocalFields").style.display = isLocal ? "" : "none";
+    }
+    applySrcKind("{{.Rule.SrcKind}}");
+    form.on('select(srcKind)', function(data){
+      applySrcKind(data.value);
+    });
+  });
+</script>
 {{end}}

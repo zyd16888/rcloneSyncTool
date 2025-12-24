@@ -18,7 +18,13 @@
         <div style="margin-bottom:6px"><b>结束：</b><span class="muted">{{ts .Job.EndedAt}}</span></div>
         <div style="margin-bottom:6px"><b>RC 端口：</b><span class="muted">{{.Job.RcPort}}</span></div>
         <div style="margin-bottom:6px"><b>日志：</b><span class="muted">{{.Job.LogPath}}</span></div>
-        <div style="margin-top:10px"><b>映射：</b><span class="muted">{{.Rule.SrcRemote}}:{{.Rule.SrcPath}} → {{.Rule.DstRemote}}:{{.Rule.DstPath}}</span></div>
+        <div style="margin-top:10px"><b>映射：</b><span class="muted">
+          {{if eq .Rule.SrcKind "local"}}
+            local:{{.Rule.SrcLocalRoot}} → {{.Rule.DstRemote}}:{{.Rule.DstPath}}
+          {{else}}
+            {{.Rule.SrcRemote}}:{{.Rule.SrcPath}} → {{.Rule.DstRemote}}:{{.Rule.DstPath}}
+          {{end}}
+        </span></div>
       </div>
     </div>
   </div>

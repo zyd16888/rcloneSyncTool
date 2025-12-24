@@ -53,8 +53,11 @@ CREATE TABLE IF NOT EXISTS remotes (
 
 CREATE TABLE IF NOT EXISTS rules (
   id TEXT PRIMARY KEY,
+  src_kind TEXT NOT NULL DEFAULT 'remote',
   src_remote TEXT NOT NULL,
   src_path TEXT NOT NULL,
+  src_local_root TEXT NOT NULL DEFAULT '',
+  local_watch_enabled INTEGER NOT NULL DEFAULT 1,
   dst_remote TEXT NOT NULL,
   dst_path TEXT NOT NULL,
   transfer_mode TEXT NOT NULL DEFAULT 'copy',
@@ -126,6 +129,15 @@ CREATE TABLE IF NOT EXISTS settings (
 	}
 
 	// Incremental migrations for existing DBs.
+	if err := s.ensureRuleColumn(ctx, "src_kind", "TEXT NOT NULL DEFAULT 'remote'"); err != nil {
+		return err
+	}
+	if err := s.ensureRuleColumn(ctx, "src_local_root", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		return err
+	}
+	if err := s.ensureRuleColumn(ctx, "local_watch_enabled", "INTEGER NOT NULL DEFAULT 1"); err != nil {
+		return err
+	}
 	if err := s.ensureRuleColumn(ctx, "bwlimit", "TEXT NOT NULL DEFAULT ''"); err != nil {
 		return err
 	}

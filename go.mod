@@ -3,6 +3,7 @@ module 115togd
 go 1.22
 
 require (
+	github.com/fsnotify/fsnotify v1.8.0
 	github.com/gin-gonic/gin v1.10.1
 	modernc.org/sqlite v1.34.5
 )

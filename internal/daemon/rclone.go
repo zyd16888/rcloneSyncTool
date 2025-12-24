@@ -26,7 +26,12 @@ type lsjsonEntry struct {
 }
 
 func scanRule(ctx context.Context, rule store.Rule, settings store.RuntimeSettings) ([]store.ScanEntry, error) {
-	src := fmt.Sprintf("%s:%s", rule.SrcRemote, rule.SrcPath)
+	var src string
+	if rule.SrcKind == "local" {
+		src = rule.SrcLocalRoot
+	} else {
+		src = fmt.Sprintf("%s:%s", rule.SrcRemote, rule.SrcPath)
+	}
 	args := []string{"lsjson", src, "--recursive", "--files-only"}
 	if strings.TrimSpace(settings.RcloneConfigPath) != "" {
 		args = append(args, "--config", settings.RcloneConfigPath)
@@ -63,6 +68,11 @@ func scanRule(ctx context.Context, rule store.Rule, settings store.RuntimeSettin
 		if e.IsDir || e.Path == "" {
 			continue
 		}
+		p := strings.TrimLeft(e.Path, "/\\")
+		p = strings.ReplaceAll(p, "\\", "/")
+		if p == "" {
+			continue
+		}
 		mt, err := time.Parse(time.RFC3339Nano, e.ModTime)
 		if err != nil {
 			mt, err = time.Parse(time.RFC3339, e.ModTime)
@@ -71,7 +81,7 @@ func scanRule(ctx context.Context, rule store.Rule, settings store.RuntimeSettin
 			mt = time.Now()
 		}
 		out = append(out, store.ScanEntry{
-			Path:    e.Path,
+			Path:    p,
 			Size:    e.Size,
 			ModTime: mt,
 		})
@@ -153,7 +163,12 @@ type rcloneRunResult struct {
 }
 
 func runRcloneJob(ctx context.Context, rule store.Rule, settings store.RuntimeSettings, port int, filesFromPath, logPath string) rcloneRunResult {
-	src := fmt.Sprintf("%s:%s", rule.SrcRemote, rule.SrcPath)
+	var src string
+	if rule.SrcKind == "local" {
+		src = rule.SrcLocalRoot
+	} else {
+		src = fmt.Sprintf("%s:%s", rule.SrcRemote, rule.SrcPath)
+	}
 	dst := fmt.Sprintf("%s:%s", rule.DstRemote, rule.DstPath)
 
 	args := []string{

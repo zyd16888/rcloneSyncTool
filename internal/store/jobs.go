@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strings"
 	"time"
 )
 
@@ -20,6 +21,13 @@ type Job struct {
 	Error         string
 	LogPath       string
 	SelectedFiles int
+}
+
+type JobFilter struct {
+	RuleID       string
+	Status       string
+	TransferMode string
+	Query        string
 }
 
 func (s *Store) ListJobs(ctx context.Context, limit int) ([]Job, error) {
@@ -63,6 +71,76 @@ func (s *Store) CountJobs(ctx context.Context) (int, error) {
 	var n int
 	err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM jobs`).Scan(&n)
 	return n, err
+}
+
+func (s *Store) ListJobsPageFiltered(ctx context.Context, limit, offset int, f JobFilter) ([]Job, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	where, args := buildJobsWhere(f)
+	q := `
+SELECT job_id, rule_id, transfer_mode, rc_port, started_at, ended_at, status, bytes_done, avg_speed, error, log_path
+FROM jobs
+` + where + `
+ORDER BY started_at DESC
+LIMIT ? OFFSET ?
+`
+	args = append(args, limit, offset)
+
+	rows, err := s.db.QueryContext(ctx, q, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Job
+	for rows.Next() {
+		var j Job
+		var started, ended int64
+		if err := rows.Scan(&j.JobID, &j.RuleID, &j.TransferMode, &j.RcPort, &started, &ended, &j.Status, &j.BytesDone, &j.AvgSpeed, &j.Error, &j.LogPath); err != nil {
+			return nil, err
+		}
+		j.StartedAt = time.Unix(started, 0)
+		if ended != 0 {
+			j.EndedAt = time.Unix(ended, 0)
+		}
+		out = append(out, j)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) CountJobsFiltered(ctx context.Context, f JobFilter) (int, error) {
+	where, args := buildJobsWhere(f)
+	q := `SELECT COUNT(*) FROM jobs` + where
+	var n int
+	err := s.db.QueryRowContext(ctx, q, args...).Scan(&n)
+	return n, err
+}
+
+func buildJobsWhere(f JobFilter) (string, []any) {
+	var b strings.Builder
+	var args []any
+	b.WriteString("WHERE 1=1\n")
+	if strings.TrimSpace(f.RuleID) != "" {
+		b.WriteString(" AND rule_id=?\n")
+		args = append(args, strings.TrimSpace(f.RuleID))
+	}
+	if strings.TrimSpace(f.Status) != "" {
+		b.WriteString(" AND status=?\n")
+		args = append(args, strings.TrimSpace(f.Status))
+	}
+	if strings.TrimSpace(f.TransferMode) != "" {
+		b.WriteString(" AND transfer_mode=?\n")
+		args = append(args, strings.TrimSpace(f.TransferMode))
+	}
+	if strings.TrimSpace(f.Query) != "" {
+		b.WriteString(" AND (job_id LIKE ? OR error LIKE ?)\n")
+		kw := "%" + strings.TrimSpace(f.Query) + "%"
+		args = append(args, kw, kw)
+	}
+	return "\n" + strings.TrimSpace(b.String()) + "\n", args
 }
 
 func (s *Store) GetJob(ctx context.Context, id string) (Job, bool, error) {
