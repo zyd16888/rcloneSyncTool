@@ -49,22 +49,22 @@
 
       <div class="drawer-side">
         <label for="app-drawer" class="drawer-overlay"></label>
-        <aside class="w-72 min-h-full bg-slate-900 text-slate-100 border-r border-slate-800">
-          <div class="h-14 min-h-14 px-4 flex items-center border-b border-slate-800">
+        <aside class="w-72 min-h-full bg-slate-800 text-slate-100 border-r border-slate-700">
+          <div class="h-14 min-h-14 px-4 flex items-center border-b border-slate-700">
             <a class="flex items-center gap-2 font-bold" href="/">
               <img src="/static/favicon.svg" class="h-5 w-5" alt="icon">
               <span>rclone 同步管理台</span>
             </a>
           </div>
           <ul class="menu p-3 text-sm">
-            <li><a class="{{if eq .Active "dashboard"}}bg-slate-800 text-white{{else}}text-slate-200 hover:bg-slate-800 hover:text-white{{end}}" href="/">概览</a></li>
-            <li><a class="{{if eq .Active "remotes"}}bg-slate-800 text-white{{else}}text-slate-200 hover:bg-slate-800 hover:text-white{{end}}" href="/remotes">远程列表</a></li>
-            <li><a class="{{if eq .Active "rules"}}bg-slate-800 text-white{{else}}text-slate-200 hover:bg-slate-800 hover:text-white{{end}}" href="/rules">同步规则</a></li>
-            <li><a class="{{if eq .Active "jobs"}}bg-slate-800 text-white{{else}}text-slate-200 hover:bg-slate-800 hover:text-white{{end}}" href="/jobs">任务列表</a></li>
-            <li><a class="{{if eq .Active "logs"}}bg-slate-800 text-white{{else}}text-slate-200 hover:bg-slate-800 hover:text-white{{end}}" href="/logs">日志</a></li>
-            <li><a class="{{if eq .Active "settings"}}bg-slate-800 text-white{{else}}text-slate-200 hover:bg-slate-800 hover:text-white{{end}}" href="/settings">系统设置</a></li>
+            <li><a class="{{if eq .Active "dashboard"}}bg-slate-700 text-white{{else}}text-slate-200 hover:bg-slate-700 hover:text-white{{end}}" href="/">概览</a></li>
+            <li><a class="{{if eq .Active "remotes"}}bg-slate-700 text-white{{else}}text-slate-200 hover:bg-slate-700 hover:text-white{{end}}" href="/remotes">远程列表</a></li>
+            <li><a class="{{if eq .Active "rules"}}bg-slate-700 text-white{{else}}text-slate-200 hover:bg-slate-700 hover:text-white{{end}}" href="/rules">同步规则</a></li>
+            <li><a class="{{if eq .Active "jobs"}}bg-slate-700 text-white{{else}}text-slate-200 hover:bg-slate-700 hover:text-white{{end}}" href="/jobs">任务列表</a></li>
+            <li><a class="{{if eq .Active "logs"}}bg-slate-700 text-white{{else}}text-slate-200 hover:bg-slate-700 hover:text-white{{end}}" href="/logs">日志</a></li>
+            <li><a class="{{if eq .Active "settings"}}bg-slate-700 text-white{{else}}text-slate-200 hover:bg-slate-700 hover:text-white{{end}}" href="/settings">系统设置</a></li>
           </ul>
-          <div class="p-4 text-xs text-slate-300">
+          <div class="p-4 text-xs text-slate-200/80">
             本地 Web 管理台（默认仅监听 127.0.0.1）。<br>
             支持任意 rclone remote → remote，以及 local → remote；每个任务独立 RC 端口，统计不会混入系统其他 rclone 任务。
           </div>
