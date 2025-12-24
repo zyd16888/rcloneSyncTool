@@ -34,6 +34,22 @@ func (s *Server) apiJobLogStream(c *gin.Context) {
 		return
 	}
 
+	streamFileSSE(c, logPath, 200, 1<<20, func() bool { return jobEnded(job) })
+}
+
+func jobEnded(j store.Job) bool { return j.Status == "done" || j.Status == "failed" }
+
+func (s *Server) apiDaemonLogStream(c *gin.Context) {
+	logPath := s.appLogPath
+	if logPath == "" {
+		c.String(http.StatusNotFound, "missing daemon log path")
+		return
+	}
+	streamFileSSE(c, logPath, 400, 1<<20, func() bool { return false })
+}
+
+func streamFileSSE(c *gin.Context, logPath string, tailLines int, maxTailBytes int64, shouldClose func() bool) {
+	ctx := c.Request.Context()
 	c.Writer.Header().Set("Content-Type", "text/event-stream")
 	c.Writer.Header().Set("Cache-Control", "no-cache")
 	c.Writer.Header().Set("Connection", "keep-alive")
@@ -50,7 +66,6 @@ func (s *Server) apiJobLogStream(c *gin.Context) {
 	}
 	flusher.Flush()
 
-	// Wait for file creation if rclone hasn't started writing yet.
 	var f *os.File
 	deadline := time.Now().Add(8 * time.Second)
 	for {
@@ -65,7 +80,7 @@ func (s *Server) apiJobLogStream(c *gin.Context) {
 			break
 		}
 		if time.Now().After(deadline) {
-			_ = writeSSE(c.Writer, "log", fmt.Sprintf("日志文件尚未生成：%s", filepath.Base(logPath)))
+			_ = writeSSE(c.Writer, "log", fmt.Sprintf("日志文件无法打开：%s", filepath.Base(logPath)))
 			flusher.Flush()
 			return
 		}
@@ -73,17 +88,16 @@ func (s *Server) apiJobLogStream(c *gin.Context) {
 	}
 	defer f.Close()
 
-	// Send last N lines first.
-	if text, err := tailLastLines(f, 200, 1<<20); err == nil && strings.TrimSpace(text) != "" {
+	if text, err := tailLastLines(f, tailLines, maxTailBytes); err == nil && strings.TrimSpace(text) != "" {
 		_ = writeSSE(c.Writer, "log", text)
 		flusher.Flush()
 	}
 
-	// Follow file.
 	offset, _ := f.Seek(0, io.SeekEnd)
 	tick := time.NewTicker(500 * time.Millisecond)
 	defer tick.Stop()
 
+	const maxChunk = 64 * 1024
 	for {
 		select {
 		case <-ctx.Done():
@@ -95,30 +109,30 @@ func (s *Server) apiJobLogStream(c *gin.Context) {
 			}
 			if offset > info.Size() {
 				offset = 0
-				_, _ = f.Seek(0, io.SeekStart)
 			}
-			if offset == info.Size() {
-				// If job ended and no more output, stop soon.
-				if jobEnded(job) {
-					_ = writeSSE(c.Writer, "done", "")
-					flusher.Flush()
-					return
+			for offset < info.Size() {
+				remain := info.Size() - offset
+				nread := remain
+				if nread > maxChunk {
+					nread = maxChunk
 				}
-				continue
+				buf := make([]byte, nread)
+				n, _ := f.ReadAt(buf, offset)
+				if n <= 0 {
+					break
+				}
+				offset += int64(n)
+				_ = writeSSE(c.Writer, "log", string(buf[:n]))
+				flusher.Flush()
 			}
-			buf := make([]byte, info.Size()-offset)
-			n, _ := f.ReadAt(buf, offset)
-			if n <= 0 {
-				continue
+			if offset == info.Size() && shouldClose != nil && shouldClose() {
+				_ = writeSSE(c.Writer, "done", "")
+				flusher.Flush()
+				return
 			}
-			offset += int64(n)
-			_ = writeSSE(c.Writer, "log", string(buf[:n]))
-			flusher.Flush()
 		}
 	}
 }
-
-func jobEnded(j store.Job) bool { return j.Status == "done" || j.Status == "failed" }
 
 func safeLogPath(logDir, jobLogPath string) (string, error) {
 	base, err := filepath.Abs(logDir)
@@ -190,4 +204,3 @@ func writeSSE(w io.Writer, event, data string) error {
 	}
 	return bw.Flush()
 }
-

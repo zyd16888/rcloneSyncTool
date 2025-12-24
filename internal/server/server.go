@@ -25,15 +25,17 @@ type Server struct {
 	st         *store.Store
 	supervisor *daemon.Supervisor
 	logDir     string
+	appLogPath string
 
 	pages map[string]*template.Template
 }
 
-func New(st *store.Store, supervisor *daemon.Supervisor, logDir string) http.Handler {
+func New(st *store.Store, supervisor *daemon.Supervisor, logDir string, appLogPath string) http.Handler {
 	s := &Server{
 		st:         st,
 		supervisor: supervisor,
 		logDir:     logDir,
+		appLogPath: appLogPath,
 	}
 	funcs := template.FuncMap{
 		"since": func(t time.Time) string {
@@ -90,6 +92,9 @@ func New(st *store.Store, supervisor *daemon.Supervisor, logDir string) http.Han
 	r.GET("/jobs/view", s.jobView)
 	r.GET("/api/job", s.apiJob)
 	r.GET("/api/job/log/stream", s.apiJobLogStream)
+
+	r.GET("/logs", s.logsPage)
+	r.GET("/api/log/daemon/stream", s.apiDaemonLogStream)
 
 	r.GET("/settings", s.settingsGet)
 	r.POST("/settings/save", s.settingsSavePost)
@@ -222,6 +227,7 @@ func (s *Server) ruleSavePost(c *gin.Context) {
 		DstRemote:       c.PostForm("dst_remote"),
 		DstPath:         c.PostForm("dst_path"),
 		TransferMode:    c.PostForm("transfer_mode"),
+		Bwlimit:         c.PostForm("bwlimit"),
 		MaxParallelJobs: atoiDefault(c.PostForm("max_parallel_jobs"), 1),
 		ScanIntervalSec: atoiDefault(c.PostForm("scan_interval_sec"), 15),
 		StableSeconds:   atoiDefault(c.PostForm("stable_seconds"), 60),

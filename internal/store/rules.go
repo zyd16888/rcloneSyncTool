@@ -9,7 +9,7 @@ import (
 
 func (s *Store) ListRules(ctx context.Context) ([]Rule, error) {
 	rows, err := s.db.QueryContext(ctx, `
-SELECT id, src_remote, src_path, dst_remote, dst_path, transfer_mode,
+SELECT id, src_remote, src_path, dst_remote, dst_path, transfer_mode, bwlimit,
        max_parallel_jobs, scan_interval_sec, stable_seconds, batch_size, enabled,
        created_at, updated_at
 FROM rules
@@ -25,7 +25,7 @@ ORDER BY id
 		var enabled int
 		var created, updated int64
 		if err := rows.Scan(
-			&r.ID, &r.SrcRemote, &r.SrcPath, &r.DstRemote, &r.DstPath, &r.TransferMode,
+			&r.ID, &r.SrcRemote, &r.SrcPath, &r.DstRemote, &r.DstPath, &r.TransferMode, &r.Bwlimit,
 			&r.MaxParallelJobs, &r.ScanIntervalSec, &r.StableSeconds, &r.BatchSize, &enabled,
 			&created, &updated,
 		); err != nil {
@@ -44,13 +44,13 @@ func (s *Store) GetRule(ctx context.Context, id string) (Rule, bool, error) {
 	var enabled int
 	var created, updated int64
 	err := s.db.QueryRowContext(ctx, `
-SELECT id, src_remote, src_path, dst_remote, dst_path, transfer_mode,
+SELECT id, src_remote, src_path, dst_remote, dst_path, transfer_mode, bwlimit,
        max_parallel_jobs, scan_interval_sec, stable_seconds, batch_size, enabled,
        created_at, updated_at
 FROM rules
 WHERE id=?
 `, id).Scan(
-		&r.ID, &r.SrcRemote, &r.SrcPath, &r.DstRemote, &r.DstPath, &r.TransferMode,
+		&r.ID, &r.SrcRemote, &r.SrcPath, &r.DstRemote, &r.DstPath, &r.TransferMode, &r.Bwlimit,
 		&r.MaxParallelJobs, &r.ScanIntervalSec, &r.StableSeconds, &r.BatchSize, &enabled,
 		&created, &updated,
 	)
@@ -73,24 +73,25 @@ func (s *Store) UpsertRule(ctx context.Context, r Rule) error {
 	now := nowUnix()
 	_, err := s.db.ExecContext(ctx, `
 INSERT INTO rules(
-  id, src_remote, src_path, dst_remote, dst_path, transfer_mode,
+  id, src_remote, src_path, dst_remote, dst_path, transfer_mode, bwlimit,
   max_parallel_jobs, scan_interval_sec, stable_seconds, batch_size, enabled,
   created_at, updated_at
 )
-VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(id) DO UPDATE SET
   src_remote=excluded.src_remote,
   src_path=excluded.src_path,
   dst_remote=excluded.dst_remote,
   dst_path=excluded.dst_path,
   transfer_mode=excluded.transfer_mode,
+  bwlimit=excluded.bwlimit,
   max_parallel_jobs=excluded.max_parallel_jobs,
   scan_interval_sec=excluded.scan_interval_sec,
   stable_seconds=excluded.stable_seconds,
   batch_size=excluded.batch_size,
   enabled=excluded.enabled,
   updated_at=excluded.updated_at
-`, r.ID, r.SrcRemote, r.SrcPath, r.DstRemote, r.DstPath, r.TransferMode,
+`, r.ID, r.SrcRemote, r.SrcPath, r.DstRemote, r.DstPath, r.TransferMode, r.Bwlimit,
 		r.MaxParallelJobs, r.ScanIntervalSec, r.StableSeconds, r.BatchSize, boolToInt(r.Enabled),
 		now, now,
 	)
@@ -108,4 +109,3 @@ func boolToInt(b bool) int {
 	}
 	return 0
 }
-

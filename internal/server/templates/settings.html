@@ -16,12 +16,14 @@
         <label class="layui-form-label">总并发</label>
         <div class="layui-input-block">
           <input type="number" name="global_max_jobs" value="{{index .S "global_max_jobs"}}" class="layui-input" placeholder="0 表示不限制">
+          <div class="muted" style="margin-top:6px">限制全局同时运行的任务数（跨所有规则）。0 表示不限制。</div>
         </div>
       </div>
       <div class="layui-form-item">
         <label class="layui-form-label">RC 起始</label>
         <div class="layui-input-block">
           <input type="number" name="rc_port_start" value="{{index .S "rc_port_start"}}" class="layui-input">
+          <div class="muted" style="margin-top:6px">每个任务会启动独立 rclone RC 端口，用于隔离统计。</div>
         </div>
       </div>
       <div class="layui-form-item">
@@ -34,42 +36,49 @@
         <label class="layui-form-label">transfers</label>
         <div class="layui-input-block">
           <input type="number" name="rclone_transfers" value="{{index .S "rclone_transfers"}}" class="layui-input">
+          <div class="muted" style="margin-top:6px">rclone 并发传输数（每个任务内部的并发）。</div>
         </div>
       </div>
       <div class="layui-form-item">
         <label class="layui-form-label">checkers</label>
         <div class="layui-input-block">
           <input type="number" name="rclone_checkers" value="{{index .S "rclone_checkers"}}" class="layui-input">
+          <div class="muted" style="margin-top:6px">rclone 校验线程数（每个任务内部）。</div>
         </div>
       </div>
       <div class="layui-form-item">
         <label class="layui-form-label">buffer-size</label>
         <div class="layui-input-block">
           <input type="text" name="rclone_buffer_size" value="{{index .S "rclone_buffer_size"}}" class="layui-input">
+          <div class="muted" style="margin-top:6px">rclone <code>--buffer-size</code>（如 64M）。</div>
         </div>
       </div>
       <div class="layui-form-item">
         <label class="layui-form-label">chunk-size</label>
         <div class="layui-input-block">
           <input type="text" name="rclone_drive_chunk_size" value="{{index .S "rclone_drive_chunk_size"}}" class="layui-input">
+          <div class="muted" style="margin-top:6px">rclone <code>--drive-chunk-size</code>（主要对 Google Drive 有用）。</div>
         </div>
       </div>
       <div class="layui-form-item">
         <label class="layui-form-label">bwlimit</label>
         <div class="layui-input-block">
           <input type="text" name="rclone_bwlimit" value="{{index .S "rclone_bwlimit"}}" class="layui-input">
+          <div class="muted" style="margin-top:6px">默认限速（rclone <code>--bwlimit</code>，如 <code>8M</code>、<code>1.5M</code>）。规则里可单独覆盖。</div>
         </div>
       </div>
       <div class="layui-form-item">
         <label class="layui-form-label">采样间隔</label>
         <div class="layui-input-block">
           <input type="number" name="metrics_interval_ms" value="{{index .S "metrics_interval_ms"}}" class="layui-input">
+          <div class="muted" style="margin-top:6px">轮询 rclone RC 统计的间隔（毫秒）。越小越实时，但更耗资源。</div>
         </div>
       </div>
       <div class="layui-form-item">
         <label class="layui-form-label">调度 tick</label>
         <div class="layui-input-block">
           <input type="number" name="scheduler_tick_ms" value="{{index .S "scheduler_tick_ms"}}" class="layui-input">
+          <div class="muted" style="margin-top:6px">调度器检查队列并启动任务的周期（毫秒）。</div>
         </div>
       </div>
       <div class="layui-form-item">

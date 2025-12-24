@@ -111,6 +111,7 @@ func ruleSame(a, b store.Rule) bool {
 		a.DstRemote == b.DstRemote &&
 		a.DstPath == b.DstPath &&
 		a.TransferMode == b.TransferMode &&
+		a.Bwlimit == b.Bwlimit &&
 		a.MaxParallelJobs == b.MaxParallelJobs &&
 		a.ScanIntervalSec == b.ScanIntervalSec &&
 		a.StableSeconds == b.StableSeconds &&

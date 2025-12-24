@@ -59,6 +59,7 @@ type Rule struct {
 	DstRemote       string
 	DstPath         string
 	TransferMode    string
+	Bwlimit         string
 	MaxParallelJobs int
 	ScanIntervalSec int
 	StableSeconds   int
@@ -81,6 +82,7 @@ func (r *Rule) Normalize() error {
 	if r.TransferMode != "copy" && r.TransferMode != "move" {
 		return fmt.Errorf("invalid transfer_mode: %q", r.TransferMode)
 	}
+	r.Bwlimit = strings.TrimSpace(r.Bwlimit)
 	if r.ID == "" {
 		return errors.New("rule id required")
 	}

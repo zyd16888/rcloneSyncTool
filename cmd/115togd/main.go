@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"flag"
+	"io"
 	"log"
 	"net"
 	"net/http"
@@ -27,6 +28,14 @@ func main() {
 	if err := os.MkdirAll(*dataDir, 0o755); err != nil {
 		log.Fatalf("mkdir data dir: %v", err)
 	}
+
+	appLogPath := filepath.Join(*dataDir, "daemon.log")
+	appLogFile, err := os.OpenFile(appLogPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
+	if err != nil {
+		log.Fatalf("open daemon log: %v", err)
+	}
+	defer appLogFile.Close()
+	log.SetOutput(io.MultiWriter(os.Stdout, appLogFile))
 
 	dbPath := filepath.Join(*dataDir, "115togd.db")
 	st, err := store.Open(dbPath)
@@ -72,7 +81,7 @@ func main() {
 	supervisor := daemon.NewSupervisor(st)
 	go supervisor.Run(ctx)
 
-	handler := server.New(st, supervisor, logDir)
+	handler := server.New(st, supervisor, logDir, appLogPath)
 
 	srv := &http.Server{
 		Addr:              *listenAddr,

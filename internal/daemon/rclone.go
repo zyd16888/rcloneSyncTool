@@ -166,9 +166,11 @@ func runRcloneJob(ctx context.Context, rule store.Rule, settings store.RuntimeSe
 		"--rc-addr", fmt.Sprintf("127.0.0.1:%d", port),
 		"--log-file", logPath,
 		"--log-level", "INFO",
-		"--config", settings.RcloneConfigPath,
 		fmt.Sprintf("--transfers=%d", settings.Transfers),
 		fmt.Sprintf("--checkers=%d", settings.Checkers),
+	}
+	if strings.TrimSpace(settings.RcloneConfigPath) != "" {
+		args = append(args, "--config", settings.RcloneConfigPath)
 	}
 	if settings.BufferSize != "" {
 		args = append(args, "--buffer-size", settings.BufferSize)
@@ -176,8 +178,12 @@ func runRcloneJob(ctx context.Context, rule store.Rule, settings store.RuntimeSe
 	if settings.DriveChunkSize != "" {
 		args = append(args, "--drive-chunk-size", settings.DriveChunkSize)
 	}
-	if strings.TrimSpace(settings.Bwlimit) != "" {
-		args = append(args, "--bwlimit", settings.Bwlimit)
+	effectiveBwlimit := strings.TrimSpace(rule.Bwlimit)
+	if effectiveBwlimit == "" {
+		effectiveBwlimit = strings.TrimSpace(settings.Bwlimit)
+	}
+	if effectiveBwlimit != "" {
+		args = append(args, "--bwlimit", effectiveBwlimit)
 	}
 
 	_ = os.MkdirAll(filepath.Dir(logPath), 0o755)

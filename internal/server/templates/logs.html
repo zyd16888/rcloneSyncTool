@@ -1,0 +1,26 @@
+{{define "content"}}
+<div class="page-title">日志</div>
+<div class="page-subtitle">系统运行日志（daemon.log）实时输出</div>
+
+<div class="layui-card">
+  <div class="layui-card-header">系统日志</div>
+  <div class="layui-card-body">
+    <pre id="daemonLogBox" style="max-height: 560px; overflow:auto; padding: 10px; background: #0b1220; color: #e5e7eb; border-radius: 6px; font-size: 12px; line-height: 1.5;"></pre>
+    <div class="muted" style="margin-top:8px">日志文件：{{.AppLogPath}}</div>
+  </div>
+</div>
+
+<script>
+  const box = document.getElementById("daemonLogBox");
+  function append(text) {
+    if (!text) return;
+    box.textContent += text;
+    if (!text.endsWith("\n")) box.textContent += "\n";
+    box.scrollTop = box.scrollHeight;
+  }
+  const es = new EventSource("/api/log/daemon/stream");
+  es.addEventListener("log", (e) => append(e.data));
+  es.onerror = () => { /* keep trying */ };
+</script>
+{{end}}
+

@@ -24,6 +24,11 @@
 
 浏览器打开：`http://127.0.0.1:8080`
 
+可选参数：
+
+- `-listen`：Web 监听地址（例如 `127.0.0.1:8080` 或 `0.0.0.0:8080`）
+- `-data`：数据目录（SQLite、日志等）
+
 数据目录会生成：
 
 - `data/115togd.db`（SQLite，运行状态/规则/任务等）
@@ -49,3 +54,49 @@ git push origin v0.1.0
 
 产物命名：`rclone-syncd_<os>_<arch>.tar.gz`（Windows 为 `.zip`）。
 
+## systemd（Linux 后台运行）
+
+示例：将二进制放到 `/usr/local/bin/rclone-syncd`，数据目录放到 `/var/lib/rclone-syncd`。
+
+1) 创建用户与目录（可选但推荐）：
+
+```bash
+sudo useradd --system --no-create-home --shell /usr/sbin/nologin rclone-syncd || true
+sudo mkdir -p /var/lib/rclone-syncd
+sudo chown -R rclone-syncd:rclone-syncd /var/lib/rclone-syncd
+```
+
+2) 创建 service 文件：`/etc/systemd/system/rclone-syncd.service`
+
+```ini
+[Unit]
+Description=rclone remote-to-remote sync daemon
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=rclone-syncd
+Group=rclone-syncd
+ExecStart=/usr/local/bin/rclone-syncd -listen 127.0.0.1:8080 -data /var/lib/rclone-syncd
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/rclone-syncd
+
+[Install]
+WantedBy=multi-user.target
+```
+
+3) 启动并设置开机自启：
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now rclone-syncd
+sudo systemctl status rclone-syncd
+```
+
+提示：Web 监听地址可通过 `-listen` 修改；如需远程访问，建议用 Nginx/Caddy 做 HTTPS 反代并加认证。

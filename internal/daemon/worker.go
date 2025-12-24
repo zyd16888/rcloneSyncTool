@@ -233,8 +233,12 @@ func (w *ruleWorker) runWithMetrics(ctx context.Context, settings store.RuntimeS
 	if settings.DriveChunkSize != "" {
 		args = append(args, "--drive-chunk-size", settings.DriveChunkSize)
 	}
-	if strings.TrimSpace(settings.Bwlimit) != "" {
-		args = append(args, "--bwlimit", settings.Bwlimit)
+	effectiveBwlimit := strings.TrimSpace(w.rule.Bwlimit)
+	if effectiveBwlimit == "" {
+		effectiveBwlimit = strings.TrimSpace(settings.Bwlimit)
+	}
+	if effectiveBwlimit != "" {
+		args = append(args, "--bwlimit", effectiveBwlimit)
 	}
 
 	_ = os.MkdirAll(filepath.Dir(logPath), 0o755)
