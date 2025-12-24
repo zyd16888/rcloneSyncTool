@@ -80,6 +80,23 @@
   </tr>
   {{end}}
     </table>
+
+    <div class="toolbar" style="justify-content: space-between; margin-top: 10px;">
+      <div class="muted">共 {{.JobsTotal}} 条，页大小 {{.JobsPageSize}}，第 {{.JobsPage}} / {{.JobsTotalPages}} 页</div>
+      <div>
+        {{if .JobsHasPrev}}
+          <a class="layui-btn layui-btn-primary layui-btn-sm" href="{{.JobsPrevURL}}">上一页</a>
+        {{else}}
+          <span class="layui-btn layui-btn-disabled layui-btn-sm">上一页</span>
+        {{end}}
+        {{if .JobsHasNext}}
+          <a class="layui-btn layui-btn-primary layui-btn-sm" href="{{.JobsNextURL}}">下一页</a>
+        {{else}}
+          <span class="layui-btn layui-btn-disabled layui-btn-sm">下一页</span>
+        {{end}}
+        <a class="layui-btn layui-btn-sm" href="/jobs">打开任务列表</a>
+      </div>
+    </div>
   </div>
 </div>
 {{end}}

@@ -23,15 +23,22 @@ type Job struct {
 }
 
 func (s *Store) ListJobs(ctx context.Context, limit int) ([]Job, error) {
+	return s.ListJobsPage(ctx, limit, 0)
+}
+
+func (s *Store) ListJobsPage(ctx context.Context, limit, offset int) ([]Job, error) {
 	if limit <= 0 {
-		limit = 200
+		limit = 50
+	}
+	if offset < 0 {
+		offset = 0
 	}
 	rows, err := s.db.QueryContext(ctx, `
 SELECT job_id, rule_id, transfer_mode, rc_port, started_at, ended_at, status, bytes_done, avg_speed, error, log_path
 FROM jobs
 ORDER BY started_at DESC
-LIMIT ?
-`, limit)
+LIMIT ? OFFSET ?
+`, limit, offset)
 	if err != nil {
 		return nil, err
 	}
@@ -50,6 +57,12 @@ LIMIT ?
 		out = append(out, j)
 	}
 	return out, rows.Err()
+}
+
+func (s *Store) CountJobs(ctx context.Context) (int, error) {
+	var n int
+	err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM jobs`).Scan(&n)
+	return n, err
 }
 
 func (s *Store) GetJob(ctx context.Context, id string) (Job, bool, error) {

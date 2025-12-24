@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"path"
+	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -137,7 +138,27 @@ func (s *Server) dashboard(c *gin.Context) {
 		counts, _ := s.st.RuleFileCounts(ctx, rule.ID)
 		rows = append(rows, ruleRow{Rule: rule, Counts: counts})
 	}
-	jobs, _ := s.st.ListJobs(ctx, 20)
+	jobsPage := atoiDefault(c.Query("jobs_page"), 1)
+	jobsPageSize := atoiDefault(c.Query("jobs_page_size"), 20)
+	if jobsPageSize <= 0 {
+		jobsPageSize = 20
+	}
+	if jobsPageSize > 50 {
+		jobsPageSize = 50
+	}
+	if jobsPage <= 0 {
+		jobsPage = 1
+	}
+	totalJobs, _ := s.st.CountJobs(ctx)
+	totalPages := (totalJobs + jobsPageSize - 1) / jobsPageSize
+	if totalPages <= 0 {
+		totalPages = 1
+	}
+	if jobsPage > totalPages {
+		jobsPage = totalPages
+	}
+	offset := (jobsPage - 1) * jobsPageSize
+	jobs, _ := s.st.ListJobsPage(ctx, jobsPageSize, offset)
 	type jobRow struct {
 		Job    store.Job
 		Metric store.JobMetric
@@ -152,6 +173,8 @@ func (s *Server) dashboard(c *gin.Context) {
 	totalSpeed, _ := s.st.TotalSpeedRunning(ctx)
 	runningJobs, _ := s.st.CountRunningJobsAll(ctx)
 	settings, _ := s.st.RuntimeSettings(ctx)
+	hasPrev := jobsPage > 1
+	hasNext := jobsPage < totalPages
 	s.render(c, "dashboard", map[string]any{
 		"Active":   "dashboard",
 		"Rules":    rows,
@@ -161,6 +184,14 @@ func (s *Server) dashboard(c *gin.Context) {
 		"TotalSpeed": totalSpeed,
 		"RunningJobs": runningJobs,
 		"RcloneConfig": settings.RcloneConfigPath,
+		"JobsPage":      jobsPage,
+		"JobsPageSize":  jobsPageSize,
+		"JobsTotal":     totalJobs,
+		"JobsTotalPages": totalPages,
+		"JobsHasPrev":   hasPrev,
+		"JobsHasNext":   hasNext,
+		"JobsPrevURL":   fmt.Sprintf("/?jobs_page=%d&jobs_page_size=%d", maxInt(1, jobsPage-1), jobsPageSize),
+		"JobsNextURL":   fmt.Sprintf("/?jobs_page=%d&jobs_page_size=%d", minInt(totalPages, jobsPage+1), jobsPageSize),
 	})
 }
 
@@ -277,7 +308,27 @@ func (s *Server) ruleRetryFailedPost(c *gin.Context) {
 
 func (s *Server) jobsList(c *gin.Context) {
 	ctx := c.Request.Context()
-	jobs, _ := s.st.ListJobs(ctx, 200)
+	page := atoiDefault(c.Query("page"), 1)
+	pageSize := atoiDefault(c.Query("page_size"), 50)
+	if pageSize <= 0 {
+		pageSize = 50
+	}
+	if pageSize > 200 {
+		pageSize = 200
+	}
+	if page <= 0 {
+		page = 1
+	}
+	total, _ := s.st.CountJobs(ctx)
+	totalPages := (total + pageSize - 1) / pageSize
+	if totalPages <= 0 {
+		totalPages = 1
+	}
+	if page > totalPages {
+		page = totalPages
+	}
+	offset := (page - 1) * pageSize
+	jobs, _ := s.st.ListJobsPage(ctx, pageSize, offset)
 	type row struct {
 		Job    store.Job
 		Metric store.JobMetric
@@ -288,10 +339,34 @@ func (s *Server) jobsList(c *gin.Context) {
 		m, ok, _ := s.st.LatestJobMetric(ctx, j.JobID)
 		rows = append(rows, row{Job: j, Metric: m, HasM: ok})
 	}
+	hasPrev := page > 1
+	hasNext := page < totalPages
 	s.render(c, "jobs", map[string]any{
 		"Active": "jobs",
 		"Jobs": rows,
+		"Page": page,
+		"PageSize": pageSize,
+		"Total": total,
+		"TotalPages": totalPages,
+		"HasPrev": hasPrev,
+		"HasNext": hasNext,
+		"PrevURL": fmt.Sprintf("/jobs?page=%d&page_size=%d", maxInt(1, page-1), pageSize),
+		"NextURL": fmt.Sprintf("/jobs?page=%d&page_size=%d", minInt(totalPages, page+1), pageSize),
 	})
+}
+
+func minInt(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+func maxInt(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
 }
 
 func (s *Server) jobView(c *gin.Context) {
