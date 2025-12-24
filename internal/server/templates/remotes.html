@@ -1,0 +1,25 @@
+{{define "content"}}
+<div class="page-title">远程列表</div>
+<div class="page-subtitle">从 rclone 配置文件读取 remote 名称（用于规则选择）</div>
+
+{{if .Error}}
+<div class="layui-elem-quote layui-quote-nm" style="border-left-color:#FFB800">
+  <b>读取失败：</b>{{.Error}}
+</div>
+{{end}}
+
+<div class="layui-card">
+  <div class="layui-card-body">
+    <table class="layui-table" lay-skin="line">
+  <tr>
+    <th>名称</th>
+  </tr>
+  {{range .Remotes}}
+  <tr>
+    <td>{{.}}</td>
+  </tr>
+  {{end}}
+    </table>
+  </div>
+</div>
+{{end}}

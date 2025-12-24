@@ -1,0 +1,35 @@
+{{define "content"}}
+<div class="page-title">任务列表</div>
+<div class="page-subtitle">每个任务对应一个独立的 rclone 进程与 RC 端口，统计互相隔离</div>
+
+<div class="layui-card">
+  <div class="layui-card-body">
+    <table class="layui-table" lay-skin="line">
+  <tr>
+    <th>任务 ID</th>
+    <th>规则</th>
+    <th>模式</th>
+    <th>状态</th>
+    <th>开始</th>
+    <th>结束</th>
+    <th>已传输</th>
+    <th>速度</th>
+    <th>错误</th>
+  </tr>
+  {{range .Jobs}}
+  <tr>
+    <td><a href="/jobs/view?id={{.Job.JobID}}">{{.Job.JobID}}</a></td>
+    <td>{{.Job.RuleID}}</td>
+    <td>{{.Job.TransferMode}}</td>
+    <td><span class="layui-badge {{if eq .Job.Status "running"}}layui-bg-green{{else if eq .Job.Status "failed"}}layui-bg-red{{else}}layui-bg-blue{{end}}">{{.Job.Status}}</span></td>
+    <td class="muted">{{ts .Job.StartedAt}}</td>
+    <td class="muted">{{ts .Job.EndedAt}}</td>
+    <td class="muted">{{if .HasM}}{{humanBytes .Metric.Bytes}}{{else}}{{humanBytes .Job.BytesDone}}{{end}}</td>
+    <td class="muted">{{if .HasM}}{{printf "%.1f" .Metric.Speed}} B/s{{else}}{{printf "%.1f" .Job.AvgSpeed}} B/s{{end}}</td>
+    <td class="muted">{{.Job.Error}}</td>
+  </tr>
+  {{end}}
+    </table>
+  </div>
+</div>
+{{end}}

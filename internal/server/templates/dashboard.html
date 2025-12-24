@@ -1,0 +1,85 @@
+{{define "content"}}
+<div class="page-title">概览</div>
+<div class="page-subtitle">配置、规则、任务实时统计</div>
+
+<div class="layui-row layui-col-space15">
+  <div class="layui-col-md12">
+    <div class="layui-card">
+      <div class="layui-card-header">运行信息</div>
+      <div class="layui-card-body">
+        <div><span class="muted">rclone 配置：</span><b>{{.RcloneConfigPathDisplay}}</b></div>
+        <div style="margin-top:6px"><span class="muted">日志目录：</span><b>{{.LogDir}}</b></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="layui-row layui-col-space15">
+  <div class="layui-col-md12">
+    <div class="layui-card">
+      <div class="layui-card-header">整体传输统计</div>
+      <div class="layui-card-body">
+        <div style="margin-bottom:6px"><span class="muted">已传输总量：</span><b>{{humanBytes .TotalBytes}}</b></div>
+        <div style="margin-bottom:6px"><span class="muted">当前总速度：</span><b>{{printf "%.1f" .TotalSpeed}} B/s</b></div>
+        <div><span class="muted">运行中任务：</span><b>{{.RunningJobs}}</b></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="layui-card">
+  <div class="layui-card-header">同步规则</div>
+  <div class="layui-card-body">
+    <table class="layui-table" lay-skin="line">
+  <tr>
+    <th>ID</th>
+    <th>启用</th>
+    <th>模式</th>
+    <th>映射</th>
+    <th>并发</th>
+    <th>统计</th>
+  </tr>
+  {{range .Rules}}
+  <tr>
+    <td><a href="/rules/edit?id={{.Rule.ID}}">{{.Rule.ID}}</a></td>
+    <td>{{if .Rule.Enabled}}是{{else}}否{{end}}</td>
+    <td>{{.Rule.TransferMode}}</td>
+    <td class="muted">{{.Rule.SrcRemote}}:{{.Rule.SrcPath}} → {{.Rule.DstRemote}}:{{.Rule.DstPath}}</td>
+    <td class="muted">{{.Rule.MaxParallelJobs}}</td>
+    <td class="muted">新={{.Counts.New}} 稳定={{.Counts.Stable}} 排队={{.Counts.Queued}} 传输中={{.Counts.Transferring}} 完成={{.Counts.Done}} 失败={{.Counts.Failed}}</td>
+  </tr>
+  {{end}}
+    </table>
+  </div>
+</div>
+
+<div class="layui-card">
+  <div class="layui-card-header">最近任务</div>
+  <div class="layui-card-body">
+    <table class="layui-table" lay-skin="line">
+  <tr>
+    <th>任务 ID</th>
+    <th>规则</th>
+    <th>模式</th>
+    <th>状态</th>
+    <th>开始时间</th>
+    <th>已传输</th>
+    <th>速度</th>
+  </tr>
+  {{range .Jobs}}
+  <tr>
+    <td><a href="/jobs/view?id={{.Job.JobID}}">{{.Job.JobID}}</a></td>
+    <td>{{.Job.RuleID}}</td>
+    <td>{{.Job.TransferMode}}</td>
+    <td>
+      <span class="layui-badge {{if eq .Job.Status "running"}}layui-bg-green{{else if eq .Job.Status "failed"}}layui-bg-red{{else}}layui-bg-blue{{end}}">{{.Job.Status}}</span>
+    </td>
+    <td class="muted">{{ts .Job.StartedAt}}</td>
+    <td class="muted">{{if .HasM}}{{humanBytes .Metric.Bytes}}{{else}}{{humanBytes .Job.BytesDone}}{{end}}</td>
+    <td class="muted">{{if .HasM}}{{printf "%.1f" .Metric.Speed}} B/s{{else}}{{printf "%.1f" .Job.AvgSpeed}} B/s{{end}}</td>
+  </tr>
+  {{end}}
+    </table>
+  </div>
+</div>
+{{end}}

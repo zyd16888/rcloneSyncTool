@@ -1,0 +1,52 @@
+{{define "content"}}
+<div class="page-title">同步规则</div>
+<div class="page-subtitle">每条规则独立扫描/队列/任务/统计；支持 copy 或 move</div>
+<div class="toolbar">
+  <a class="layui-btn" href="/rules/edit">新建规则</a>
+</div>
+
+<div class="layui-card">
+  <div class="layui-card-body">
+    <table class="layui-table" lay-skin="line">
+  <tr>
+    <th>ID</th>
+    <th>启用</th>
+    <th>模式</th>
+    <th>映射</th>
+    <th>扫描策略</th>
+    <th>统计</th>
+    <th>操作</th>
+  </tr>
+  {{range .Rules}}
+  <tr>
+    <td><a href="/rules/edit?id={{.Rule.ID}}">{{.Rule.ID}}</a></td>
+    <td>{{if .Rule.Enabled}}是{{else}}否{{end}}</td>
+    <td>{{.Rule.TransferMode}}</td>
+    <td class="muted">{{.Rule.SrcRemote}}:{{.Rule.SrcPath}} → {{.Rule.DstRemote}}:{{.Rule.DstPath}}</td>
+    <td class="muted">间隔={{.Rule.ScanIntervalSec}}s 稳定={{.Rule.StableSeconds}}s 批={{.Rule.BatchSize}} 并发={{.Rule.MaxParallelJobs}}</td>
+    <td class="muted">新={{.Counts.New}} 稳定={{.Counts.Stable}} 排队={{.Counts.Queued}} 传输中={{.Counts.Transferring}} 完成={{.Counts.Done}} 失败={{.Counts.Failed}}</td>
+    <td>
+      <form class="inline" method="post" action="/rules/scan">
+        <input type="hidden" name="id" value="{{.Rule.ID}}">
+        <button class="layui-btn layui-btn-primary layui-btn-sm" type="submit">立即扫描</button>
+      </form>
+      <form class="inline" method="post" action="/rules/retry_failed">
+        <input type="hidden" name="id" value="{{.Rule.ID}}">
+        <button class="layui-btn layui-btn-primary layui-btn-sm" type="submit">重试失败</button>
+      </form>
+      <form class="inline" method="post" action="/rules/toggle">
+        <input type="hidden" name="id" value="{{.Rule.ID}}">
+        <input type="hidden" name="enabled" value="{{if .Rule.Enabled}}0{{else}}1{{end}}">
+        <button class="layui-btn layui-btn-sm" type="submit">{{if .Rule.Enabled}}停用{{else}}启用{{end}}</button>
+      </form>
+      <form class="inline" method="post" action="/rules/delete">
+        <input type="hidden" name="id" value="{{.Rule.ID}}">
+        <button class="layui-btn layui-btn-danger layui-btn-sm" type="submit">删除</button>
+      </form>
+    </td>
+  </tr>
+  {{end}}
+    </table>
+  </div>
+</div>
+{{end}}

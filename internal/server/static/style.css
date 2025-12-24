@@ -1,0 +1,21 @@
+body { background: #f2f3f5; }
+.app-layout { min-height: 100vh; }
+.app-side { width: 240px; }
+.app-layout .layui-side { top: 0; }
+.app-layout .layui-body { top: 0; }
+.app-brand { height: 58px; line-height: 58px; padding: 0 18px; color: #fff; font-weight: 700; }
+.app-hint { padding: 12px 18px; color: rgba(255,255,255,0.65); font-size: 12px; line-height: 1.45; }
+.app-body { left: 240px; }
+.app-content { padding: 18px 18px 26px; }
+
+.page-title { font-size: 18px; font-weight: 700; margin: 6px 0 12px; }
+.page-subtitle { color: #64748b; font-size: 13px; margin-top: -6px; margin-bottom: 12px; }
+
+.toolbar { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-bottom: 12px; }
+.muted { color: #64748b; }
+.inline { display: inline-block; }
+
+@media (max-width: 920px) {
+  .app-side { width: 200px; }
+  .app-body { left: 200px; }
+}

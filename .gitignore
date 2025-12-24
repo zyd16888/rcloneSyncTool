@@ -1,0 +1,30 @@
+/data/
+
+# Go build outputs
+/bin/
+/dist/
+*.exe
+*.dll
+*.so
+*.dylib
+*.a
+*.o
+*.test
+*.out
+
+# Logs / runtime
+*.log
+
+# SQLite (in case users put DB elsewhere)
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# IDE
+.idea/
+.vscode/
+.DS_Store
+
+AGENTS.md
+Design & Implementation Guide.md

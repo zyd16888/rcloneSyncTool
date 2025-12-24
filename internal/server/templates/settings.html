@@ -1,0 +1,121 @@
+{{define "content"}}
+<div class="page-title">系统设置</div>
+<div class="page-subtitle">使用外部 rclone 配置文件（只需要 remote 名称即可调用）</div>
+
+<div class="layui-card">
+  <div class="layui-card-body">
+    <form class="layui-form" method="post" action="/settings/save">
+      <div class="layui-form-item">
+        <label class="layui-form-label">配置路径</label>
+        <div class="layui-input-block">
+          <input type="text" name="rclone_config_path" value="{{index .S "rclone_config_path"}}" class="layui-input" placeholder="留空：使用 rclone 默认配置路径；填写：例如 C:\\Users\\you\\AppData\\Roaming\\rclone\\rclone.conf">
+          <div class="muted" style="margin-top:6px">当前：{{.RcloneConfigPathDisplay}}</div>
+        </div>
+      </div>
+      <div class="layui-form-item">
+        <label class="layui-form-label">总并发</label>
+        <div class="layui-input-block">
+          <input type="number" name="global_max_jobs" value="{{index .S "global_max_jobs"}}" class="layui-input" placeholder="0 表示不限制">
+        </div>
+      </div>
+      <div class="layui-form-item">
+        <label class="layui-form-label">RC 起始</label>
+        <div class="layui-input-block">
+          <input type="number" name="rc_port_start" value="{{index .S "rc_port_start"}}" class="layui-input">
+        </div>
+      </div>
+      <div class="layui-form-item">
+        <label class="layui-form-label">RC 结束</label>
+        <div class="layui-input-block">
+          <input type="number" name="rc_port_end" value="{{index .S "rc_port_end"}}" class="layui-input">
+        </div>
+      </div>
+      <div class="layui-form-item">
+        <label class="layui-form-label">transfers</label>
+        <div class="layui-input-block">
+          <input type="number" name="rclone_transfers" value="{{index .S "rclone_transfers"}}" class="layui-input">
+        </div>
+      </div>
+      <div class="layui-form-item">
+        <label class="layui-form-label">checkers</label>
+        <div class="layui-input-block">
+          <input type="number" name="rclone_checkers" value="{{index .S "rclone_checkers"}}" class="layui-input">
+        </div>
+      </div>
+      <div class="layui-form-item">
+        <label class="layui-form-label">buffer-size</label>
+        <div class="layui-input-block">
+          <input type="text" name="rclone_buffer_size" value="{{index .S "rclone_buffer_size"}}" class="layui-input">
+        </div>
+      </div>
+      <div class="layui-form-item">
+        <label class="layui-form-label">chunk-size</label>
+        <div class="layui-input-block">
+          <input type="text" name="rclone_drive_chunk_size" value="{{index .S "rclone_drive_chunk_size"}}" class="layui-input">
+        </div>
+      </div>
+      <div class="layui-form-item">
+        <label class="layui-form-label">bwlimit</label>
+        <div class="layui-input-block">
+          <input type="text" name="rclone_bwlimit" value="{{index .S "rclone_bwlimit"}}" class="layui-input">
+        </div>
+      </div>
+      <div class="layui-form-item">
+        <label class="layui-form-label">采样间隔</label>
+        <div class="layui-input-block">
+          <input type="number" name="metrics_interval_ms" value="{{index .S "metrics_interval_ms"}}" class="layui-input">
+        </div>
+      </div>
+      <div class="layui-form-item">
+        <label class="layui-form-label">调度 tick</label>
+        <div class="layui-input-block">
+          <input type="number" name="scheduler_tick_ms" value="{{index .S "scheduler_tick_ms"}}" class="layui-input">
+        </div>
+      </div>
+      <div class="layui-form-item">
+        <div class="layui-input-block">
+          <button class="layui-btn" type="submit">保存</button>
+          <button class="layui-btn layui-btn-primary" type="button" id="btnCheck">检测 rclone</button>
+        </div>
+      </div>
+    </form>
+    <div class="muted">日志目录：{{.LogDir}}</div>
+  </div>
+</div>
+
+<script>
+  layui.use(['layer'], function(){
+    const layer = layui.layer;
+    const btn = document.getElementById('btnCheck');
+    btn.addEventListener('click', async () => {
+      try {
+        const r = await fetch('/api/rclone/check');
+        const d = await r.json();
+        if (!d.installed) {
+          layer.alert((d.hint || '未检测到 rclone') + '<br><br>请自行安装后重启终端/服务。', {title: 'rclone 检测'});
+          return;
+        }
+        const remotes = (d.remotes || []).slice(0, 50).join('<br>');
+        layer.open({
+          type: 1,
+          title: 'rclone 检测',
+          area: ['720px', '520px'],
+          shadeClose: true,
+          content:
+            '<div style="padding:14px;line-height:1.7">' +
+            '<div><b>PATH</b>: ' + (d.path || '') + '</div>' +
+            '<div><b>版本</b>: ' + (d.version || d.versionError || '') + '</div>' +
+            '<div><b>配置</b>: ' + (d.configPathDisplay || '') + '</div>' +
+            '<div style="margin-top:10px"><b>Remotes</b>（最多50个）:</div>' +
+            '<div class="layui-text" style="margin-top:6px;max-height:320px;overflow:auto;border:1px solid #eee;padding:10px;border-radius:6px;background:#fafafa">' +
+            (remotes || (d.remotesError || '')) +
+            '</div>' +
+            '</div>'
+        });
+      } catch (e) {
+        layer.alert('检测失败：' + e, {title: 'rclone 检测'});
+      }
+    });
+  });
+</script>
+{{end}}

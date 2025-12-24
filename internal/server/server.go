@@ -1,0 +1,433 @@
+package server
+
+import (
+	"embed"
+	"encoding/json"
+	"html/template"
+	"io/fs"
+	"log"
+	"net/http"
+	"path"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/gin-gonic/gin"
+
+	"115togd/internal/daemon"
+	"115togd/internal/store"
+)
+
+//go:embed templates/*.html static
+var content embed.FS
+
+type Server struct {
+	st         *store.Store
+	supervisor *daemon.Supervisor
+	logDir     string
+
+	pages map[string]*template.Template
+}
+
+func New(st *store.Store, supervisor *daemon.Supervisor, logDir string) http.Handler {
+	s := &Server{
+		st:         st,
+		supervisor: supervisor,
+		logDir:     logDir,
+	}
+	funcs := template.FuncMap{
+		"since": func(t time.Time) string {
+			if t.IsZero() {
+				return ""
+			}
+			d := time.Since(t).Round(time.Second)
+			return d.String()
+		},
+		"ts": func(t time.Time) string {
+			if t.IsZero() {
+				return ""
+			}
+			return t.Format("2006-01-02 15:04:05")
+		},
+		"humanBytes": humanBytes,
+	}
+	s.pages = map[string]*template.Template{}
+	files, err := fs.Glob(content, "templates/*.html")
+	if err != nil {
+		panic(err)
+	}
+	for _, f := range files {
+		if strings.HasSuffix(f, "/layout.html") || strings.HasSuffix(f, "layout.html") {
+			continue
+		}
+		name := strings.TrimSuffix(path.Base(f), ".html")
+		t := template.New("layout").Funcs(funcs)
+		t = template.Must(t.ParseFS(content, "templates/layout.html", f))
+		s.pages[name] = t
+	}
+
+	staticFS, _ := fs.Sub(content, "static")
+	r := gin.New()
+	r.Use(gin.Recovery())
+	r.Use(func(c *gin.Context) {
+		c.Writer.Header().Set("Cache-Control", "no-store")
+		c.Next()
+	})
+
+	r.GET("/", s.dashboard)
+
+	r.GET("/remotes", s.remotesList)
+
+	r.GET("/rules", s.rulesList)
+	r.GET("/rules/edit", s.ruleEditGet)
+	r.POST("/rules/save", s.ruleSavePost)
+	r.POST("/rules/delete", s.ruleDeletePost)
+	r.POST("/rules/toggle", s.ruleTogglePost)
+	r.POST("/rules/scan", s.ruleScanPost)
+	r.POST("/rules/retry_failed", s.ruleRetryFailedPost)
+
+	r.GET("/jobs", s.jobsList)
+	r.GET("/jobs/view", s.jobView)
+	r.GET("/api/job", s.apiJob)
+	r.GET("/api/job/log/stream", s.apiJobLogStream)
+
+	r.GET("/settings", s.settingsGet)
+	r.POST("/settings/save", s.settingsSavePost)
+	r.GET("/api/rclone/check", s.apiRcloneCheck)
+
+	r.StaticFS("/static", http.FS(staticFS))
+
+	return r
+}
+
+func (s *Server) render(c *gin.Context, name string, data any) {
+	c.Writer.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if m, ok := data.(map[string]any); ok {
+		s.injectBase(c, m)
+	}
+	t, ok := s.pages[name]
+	if !ok {
+		c.String(http.StatusInternalServerError, "template not found")
+		return
+	}
+	if err := t.ExecuteTemplate(c.Writer, "layout", data); err != nil {
+		log.Printf("render %s: %v", name, err)
+		c.String(http.StatusInternalServerError, "template error")
+	}
+}
+
+func (s *Server) redirect(c *gin.Context, p string) {
+	c.Redirect(http.StatusSeeOther, p)
+}
+
+func (s *Server) dashboard(c *gin.Context) {
+	ctx := c.Request.Context()
+	rules, _ := s.st.ListRules(ctx)
+	type ruleRow struct {
+		Rule   store.Rule
+		Counts store.FileStateCounts
+	}
+	var rows []ruleRow
+	for _, rule := range rules {
+		counts, _ := s.st.RuleFileCounts(ctx, rule.ID)
+		rows = append(rows, ruleRow{Rule: rule, Counts: counts})
+	}
+	jobs, _ := s.st.ListJobs(ctx, 20)
+	type jobRow struct {
+		Job    store.Job
+		Metric store.JobMetric
+		HasM   bool
+	}
+	var jobRows []jobRow
+	for _, j := range jobs {
+		m, ok, _ := s.st.LatestJobMetric(ctx, j.JobID)
+		jobRows = append(jobRows, jobRow{Job: j, Metric: m, HasM: ok})
+	}
+	totalBytes, _ := s.st.TotalBytesDone(ctx)
+	totalSpeed, _ := s.st.TotalSpeedRunning(ctx)
+	runningJobs, _ := s.st.CountRunningJobsAll(ctx)
+	settings, _ := s.st.RuntimeSettings(ctx)
+	s.render(c, "dashboard", map[string]any{
+		"Active":   "dashboard",
+		"Rules":    rows,
+		"Jobs":     jobRows,
+		"LogDir":   s.logDir,
+		"TotalBytes": totalBytes,
+		"TotalSpeed": totalSpeed,
+		"RunningJobs": runningJobs,
+		"RcloneConfig": settings.RcloneConfigPath,
+	})
+}
+
+func (s *Server) remotesList(c *gin.Context) {
+	ctx := c.Request.Context()
+	remotes, err := s.listRcloneRemotes(ctx)
+	s.render(c, "remotes", map[string]any{
+		"Active":  "remotes",
+		"Remotes": remotes,
+		"Error":   errString(err),
+	})
+}
+
+func (s *Server) rulesList(c *gin.Context) {
+	ctx := c.Request.Context()
+	rules, _ := s.st.ListRules(ctx)
+	type ruleRow struct {
+		Rule   store.Rule
+		Counts store.FileStateCounts
+	}
+	var rows []ruleRow
+	for _, rule := range rules {
+		counts, _ := s.st.RuleFileCounts(ctx, rule.ID)
+		rows = append(rows, ruleRow{Rule: rule, Counts: counts})
+	}
+	s.render(c, "rules", map[string]any{
+		"Active": "rules",
+		"Rules": rows,
+	})
+}
+
+func (s *Server) ruleEditGet(c *gin.Context) {
+	ctx := c.Request.Context()
+	id := strings.TrimSpace(c.Query("id"))
+	var rule store.Rule
+	if id != "" {
+		if got, ok, _ := s.st.GetRule(ctx, id); ok {
+			rule = got
+		}
+	}
+	if rule.ID == "" {
+		rule.Enabled = true
+		rule.TransferMode = "copy"
+		rule.MaxParallelJobs = 1
+		rule.ScanIntervalSec = 15
+		rule.StableSeconds = 60
+		rule.BatchSize = 100
+	}
+	remotes, err := s.listRcloneRemotes(ctx)
+	s.render(c, "rule_edit", map[string]any{
+		"Active":  "rules",
+		"Rule":    rule,
+		"Remotes": remotes,
+		"Error":   errString(err),
+	})
+}
+
+func (s *Server) ruleSavePost(c *gin.Context) {
+	ctx := c.Request.Context()
+	rule := store.Rule{
+		ID:              c.PostForm("id"),
+		SrcRemote:       c.PostForm("src_remote"),
+		SrcPath:         c.PostForm("src_path"),
+		DstRemote:       c.PostForm("dst_remote"),
+		DstPath:         c.PostForm("dst_path"),
+		TransferMode:    c.PostForm("transfer_mode"),
+		MaxParallelJobs: atoiDefault(c.PostForm("max_parallel_jobs"), 1),
+		ScanIntervalSec: atoiDefault(c.PostForm("scan_interval_sec"), 15),
+		StableSeconds:   atoiDefault(c.PostForm("stable_seconds"), 60),
+		BatchSize:       atoiDefault(c.PostForm("batch_size"), 100),
+		Enabled:         store.ParseEnabled(c.PostForm("enabled")),
+	}
+	if err := s.st.UpsertRule(ctx, rule); err != nil {
+		c.String(http.StatusBadRequest, err.Error())
+		return
+	}
+	s.redirect(c, "/rules")
+}
+
+func (s *Server) ruleDeletePost(c *gin.Context) {
+	ctx := c.Request.Context()
+	id := c.PostForm("id")
+	_ = s.st.DeleteRule(ctx, id)
+	s.redirect(c, "/rules")
+}
+
+func (s *Server) ruleTogglePost(c *gin.Context) {
+	ctx := c.Request.Context()
+	id := c.PostForm("id")
+	enabled := store.ParseEnabled(c.PostForm("enabled"))
+	rule, ok, err := s.st.GetRule(ctx, id)
+	if err != nil || !ok {
+		c.String(http.StatusNotFound, "rule not found")
+		return
+	}
+	rule.Enabled = enabled
+	_ = s.st.UpsertRule(ctx, rule)
+	s.redirect(c, "/rules")
+}
+
+func (s *Server) ruleScanPost(c *gin.Context) {
+	id := c.PostForm("id")
+	_ = s.supervisor.TriggerScan(id)
+	s.redirect(c, "/rules")
+}
+
+func (s *Server) ruleRetryFailedPost(c *gin.Context) {
+	ctx := c.Request.Context()
+	id := c.PostForm("id")
+	_, _ = s.st.RetryFailed(ctx, id, 10000)
+	s.redirect(c, "/rules")
+}
+
+func (s *Server) jobsList(c *gin.Context) {
+	ctx := c.Request.Context()
+	jobs, _ := s.st.ListJobs(ctx, 200)
+	type row struct {
+		Job    store.Job
+		Metric store.JobMetric
+		HasM   bool
+	}
+	var rows []row
+	for _, j := range jobs {
+		m, ok, _ := s.st.LatestJobMetric(ctx, j.JobID)
+		rows = append(rows, row{Job: j, Metric: m, HasM: ok})
+	}
+	s.render(c, "jobs", map[string]any{
+		"Active": "jobs",
+		"Jobs": rows,
+	})
+}
+
+func (s *Server) jobView(c *gin.Context) {
+	ctx := c.Request.Context()
+	id := strings.TrimSpace(c.Query("id"))
+	job, ok, _ := s.st.GetJob(ctx, id)
+	if !ok {
+		c.Status(http.StatusNotFound)
+		return
+	}
+	rule, _, _ := s.st.GetRule(ctx, job.RuleID)
+	s.render(c, "job_view", map[string]any{
+		"Active": "jobs",
+		"Job":  job,
+		"Rule": rule,
+	})
+}
+
+func (s *Server) apiJob(c *gin.Context) {
+	ctx := c.Request.Context()
+	id := strings.TrimSpace(c.Query("id"))
+	job, ok, err := s.st.GetJob(ctx, id)
+	if err != nil || !ok {
+		c.Status(http.StatusNotFound)
+		return
+	}
+	metric, hasM, _ := s.st.LatestJobMetric(ctx, job.JobID)
+	c.Writer.Header().Set("Content-Type", "application/json; charset=utf-8")
+	_ = json.NewEncoder(c.Writer).Encode(map[string]any{
+		"job":     job,
+		"metric":  metric,
+		"hasMetric": hasM,
+	})
+}
+
+func (s *Server) settingsGet(c *gin.Context) {
+	ctx := c.Request.Context()
+	all, _ := s.st.ListSettings(ctx)
+	m := map[string]string{}
+	for _, kv := range all {
+		m[kv.Key] = kv.Value
+	}
+	s.render(c, "settings", map[string]any{
+		"Active":   "settings",
+		"S":        m,
+		"LogDir":   s.logDir,
+	})
+}
+
+func (s *Server) settingsSavePost(c *gin.Context) {
+	ctx := c.Request.Context()
+	for _, key := range []string{
+		"rclone_config_path",
+		"global_max_jobs",
+		"rc_port_start",
+		"rc_port_end",
+		"rclone_transfers",
+		"rclone_checkers",
+		"rclone_buffer_size",
+		"rclone_drive_chunk_size",
+		"rclone_bwlimit",
+		"metrics_interval_ms",
+		"scheduler_tick_ms",
+	} {
+		v := strings.TrimSpace(c.PostForm(key))
+		if key == "rclone_config_path" {
+			_ = s.st.SetSetting(ctx, key, v)
+			continue
+		}
+		if v == "" {
+			continue
+		}
+		_ = s.st.SetSetting(ctx, key, v)
+	}
+	s.redirect(c, "/settings")
+}
+
+func errString(err error) string {
+	if err == nil {
+		return ""
+	}
+	return err.Error()
+}
+
+func atoiDefault(s string, def int) int {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return def
+	}
+	n, err := strconv.Atoi(s)
+	if err != nil {
+		return def
+	}
+	return n
+}
+
+func parseKV(s string) map[string]string {
+	out := map[string]string{}
+	for _, line := range strings.Split(s, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		k, v, ok := strings.Cut(line, "=")
+		if !ok {
+			continue
+		}
+		k = strings.TrimSpace(k)
+		v = strings.TrimSpace(v)
+		if k == "" {
+			continue
+		}
+		out[k] = v
+	}
+	return out
+}
+
+func serializeKV(m map[string]string) string {
+	if len(m) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	for k, v := range m {
+		b.WriteString(k)
+		b.WriteString("=")
+		b.WriteString(v)
+		b.WriteString("\n")
+	}
+	return b.String()
+}
+
+func humanBytes(n int64) string {
+	const unit = 1024
+	if n < unit {
+		return strconv.FormatInt(n, 10) + " B"
+	}
+	div, exp := int64(unit), 0
+	for v := n / unit; v >= unit; v /= unit {
+		div *= unit
+		exp++
+	}
+	value := float64(n) / float64(div)
+	suffix := string("KMGTPE"[exp]) + "iB"
+	return strconv.FormatFloat(value, 'f', 1, 64) + " " + suffix
+}

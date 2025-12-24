@@ -1,0 +1,111 @@
+package store
+
+import (
+	"context"
+	"database/sql"
+	"errors"
+	"time"
+)
+
+func (s *Store) ListRules(ctx context.Context) ([]Rule, error) {
+	rows, err := s.db.QueryContext(ctx, `
+SELECT id, src_remote, src_path, dst_remote, dst_path, transfer_mode,
+       max_parallel_jobs, scan_interval_sec, stable_seconds, batch_size, enabled,
+       created_at, updated_at
+FROM rules
+ORDER BY id
+`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Rule
+	for rows.Next() {
+		var r Rule
+		var enabled int
+		var created, updated int64
+		if err := rows.Scan(
+			&r.ID, &r.SrcRemote, &r.SrcPath, &r.DstRemote, &r.DstPath, &r.TransferMode,
+			&r.MaxParallelJobs, &r.ScanIntervalSec, &r.StableSeconds, &r.BatchSize, &enabled,
+			&created, &updated,
+		); err != nil {
+			return nil, err
+		}
+		r.Enabled = enabled != 0
+		r.CreatedAt = time.Unix(created, 0)
+		r.UpdatedAt = time.Unix(updated, 0)
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) GetRule(ctx context.Context, id string) (Rule, bool, error) {
+	var r Rule
+	var enabled int
+	var created, updated int64
+	err := s.db.QueryRowContext(ctx, `
+SELECT id, src_remote, src_path, dst_remote, dst_path, transfer_mode,
+       max_parallel_jobs, scan_interval_sec, stable_seconds, batch_size, enabled,
+       created_at, updated_at
+FROM rules
+WHERE id=?
+`, id).Scan(
+		&r.ID, &r.SrcRemote, &r.SrcPath, &r.DstRemote, &r.DstPath, &r.TransferMode,
+		&r.MaxParallelJobs, &r.ScanIntervalSec, &r.StableSeconds, &r.BatchSize, &enabled,
+		&created, &updated,
+	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Rule{}, false, nil
+	}
+	if err != nil {
+		return Rule{}, false, err
+	}
+	r.Enabled = enabled != 0
+	r.CreatedAt = time.Unix(created, 0)
+	r.UpdatedAt = time.Unix(updated, 0)
+	return r, true, nil
+}
+
+func (s *Store) UpsertRule(ctx context.Context, r Rule) error {
+	if err := r.Normalize(); err != nil {
+		return err
+	}
+	now := nowUnix()
+	_, err := s.db.ExecContext(ctx, `
+INSERT INTO rules(
+  id, src_remote, src_path, dst_remote, dst_path, transfer_mode,
+  max_parallel_jobs, scan_interval_sec, stable_seconds, batch_size, enabled,
+  created_at, updated_at
+)
+VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(id) DO UPDATE SET
+  src_remote=excluded.src_remote,
+  src_path=excluded.src_path,
+  dst_remote=excluded.dst_remote,
+  dst_path=excluded.dst_path,
+  transfer_mode=excluded.transfer_mode,
+  max_parallel_jobs=excluded.max_parallel_jobs,
+  scan_interval_sec=excluded.scan_interval_sec,
+  stable_seconds=excluded.stable_seconds,
+  batch_size=excluded.batch_size,
+  enabled=excluded.enabled,
+  updated_at=excluded.updated_at
+`, r.ID, r.SrcRemote, r.SrcPath, r.DstRemote, r.DstPath, r.TransferMode,
+		r.MaxParallelJobs, r.ScanIntervalSec, r.StableSeconds, r.BatchSize, boolToInt(r.Enabled),
+		now, now,
+	)
+	return err
+}
+
+func (s *Store) DeleteRule(ctx context.Context, id string) error {
+	_, err := s.db.ExecContext(ctx, `DELETE FROM rules WHERE id=?`, id)
+	return err
+}
+
+func boolToInt(b bool) int {
+	if b {
+		return 1
+	}
+	return 0
+}
+

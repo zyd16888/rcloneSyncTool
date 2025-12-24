@@ -1,0 +1,93 @@
+{{define "content"}}
+<div class="page-title">任务详情</div>
+<div class="page-subtitle">实时速率/流量来自该任务独占的 RC 端口</div>
+<div class="toolbar">
+  <a class="layui-btn layui-btn-primary" href="/jobs">返回任务列表</a>
+</div>
+
+<div class="layui-row layui-col-space15">
+  <div class="layui-col-md12">
+    <div class="layui-card">
+      <div class="layui-card-header">基础信息</div>
+      <div class="layui-card-body">
+        <div style="margin-bottom:6px"><b>任务 ID：</b><span class="muted">{{.Job.JobID}}</span></div>
+        <div style="margin-bottom:6px"><b>规则：</b><span class="muted">{{.Job.RuleID}}</span></div>
+        <div style="margin-bottom:6px"><b>模式：</b><span class="muted">{{.Job.TransferMode}}</span></div>
+        <div style="margin-bottom:6px"><b>状态：</b><span class="layui-badge {{if eq .Job.Status "running"}}layui-bg-green{{else if eq .Job.Status "failed"}}layui-bg-red{{else}}layui-bg-blue{{end}}">{{.Job.Status}}</span></div>
+        <div style="margin-bottom:6px"><b>开始：</b><span class="muted">{{ts .Job.StartedAt}}</span></div>
+        <div style="margin-bottom:6px"><b>结束：</b><span class="muted">{{ts .Job.EndedAt}}</span></div>
+        <div style="margin-bottom:6px"><b>RC 端口：</b><span class="muted">{{.Job.RcPort}}</span></div>
+        <div style="margin-bottom:6px"><b>日志：</b><span class="muted">{{.Job.LogPath}}</span></div>
+        <div style="margin-top:10px"><b>映射：</b><span class="muted">{{.Rule.SrcRemote}}:{{.Rule.SrcPath}} → {{.Rule.DstRemote}}:{{.Rule.DstPath}}</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="layui-row layui-col-space15">
+  <div class="layui-col-md12">
+    <div class="layui-card">
+      <div class="layui-card-header">实时统计</div>
+      <div class="layui-card-body">
+        <div class="layui-row layui-col-space15">
+          <div class="layui-col-sm6 layui-col-md3"><div><b>已传输：</b><span id="bytes" class="muted">-</span></div></div>
+          <div class="layui-col-sm6 layui-col-md3"><div><b>当前速度：</b><span id="speed" class="muted">-</span></div></div>
+          <div class="layui-col-sm6 layui-col-md3"><div><b>并发传输数：</b><span id="transfers" class="muted">-</span></div></div>
+          <div class="layui-col-sm6 layui-col-md3"><div><b>错误数：</b><span id="errors" class="muted">-</span></div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="layui-row layui-col-space15">
+  <div class="layui-col-md12">
+    <div class="layui-card">
+      <div class="layui-card-header">实时日志</div>
+      <div class="layui-card-body">
+        <pre id="logBox" class="layui-code" style="max-height: 320px; overflow:auto; padding: 10px; background: #0b1220; color: #e5e7eb; border-radius: 6px; font-size: 12px; line-height: 1.5;"></pre>
+        <div class="muted" style="margin-top:8px">日志来源：{{.Job.LogPath}}</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  const jobID = "{{.Job.JobID}}";
+  function humanBytes(n) {
+    const u = 1024;
+    if (n < u) return n + " B";
+    const units = ["KiB","MiB","GiB","TiB","PiB"];
+    let i = -1;
+    let v = n;
+    while (v >= u && i < units.length - 1) { v /= u; i++; }
+    return v.toFixed(1) + " " + units[i];
+  }
+  function humanSpeed(n) { return humanBytes(n) + "/s"; }
+  async function refresh() {
+    const r = await fetch("/api/job?id=" + encodeURIComponent(jobID));
+    if (!r.ok) return;
+    const d = await r.json();
+    if (!d.hasMetric) return;
+    document.getElementById("bytes").textContent = humanBytes(d.metric.Bytes);
+    document.getElementById("speed").textContent = humanSpeed(d.metric.Speed);
+    document.getElementById("transfers").textContent = d.metric.Transfers;
+    document.getElementById("errors").textContent = d.metric.Errors;
+  }
+  refresh();
+  setInterval(refresh, 1000);
+
+  // Log stream (SSE)
+  const logBox = document.getElementById("logBox");
+  function appendLog(text) {
+    if (!text) return;
+    logBox.textContent += text;
+    if (!text.endsWith("\n")) logBox.textContent += "\n";
+    logBox.scrollTop = logBox.scrollHeight;
+  }
+  const es = new EventSource("/api/job/log/stream?id=" + encodeURIComponent(jobID));
+  es.addEventListener("log", (e) => appendLog(e.data));
+  es.addEventListener("done", () => { es.close(); });
+  es.onerror = () => { /* keep trying */ };
+</script>
+{{end}}

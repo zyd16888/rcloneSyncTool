@@ -1,0 +1,100 @@
+{{define "content"}}
+<div class="page-title">编辑规则</div>
+<div class="page-subtitle">每条规则独立运行；copy 不删源端，move 成功后删除源端</div>
+
+{{if .Error}}
+<div class="layui-elem-quote layui-quote-nm" style="border-left-color:#FFB800">
+  <b>提示：</b>{{.Error}}<br>
+  你仍可手动输入 remote 名称，但扫描/传输时 rclone 必须能解析到该 remote。
+</div>
+{{end}}
+
+<div class="layui-card">
+  <div class="layui-card-body">
+    <form class="layui-form" method="post" action="/rules/save">
+      <div class="layui-form-item">
+        <label class="layui-form-label">规则 ID</label>
+        <div class="layui-input-block">
+          <input type="text" name="id" value="{{.Rule.ID}}" placeholder="例如：ruleA" autocomplete="off" class="layui-input">
+        </div>
+      </div>
+      <div class="layui-form-item">
+        <label class="layui-form-label">启用</label>
+        <div class="layui-input-block">
+          <select name="enabled">
+            <option value="1" {{if .Rule.Enabled}}selected{{end}}>是</option>
+            <option value="0" {{if .Rule.Enabled}}{{else}}selected{{end}}>否</option>
+          </select>
+        </div>
+      </div>
+      <div class="layui-form-item">
+        <label class="layui-form-label">模式</label>
+        <div class="layui-input-block">
+          <select name="transfer_mode">
+            <option value="copy" {{if eq .Rule.TransferMode "copy"}}selected{{end}}>copy（不删除源端）</option>
+            <option value="move" {{if eq .Rule.TransferMode "move"}}selected{{end}}>move（成功后删除源端）</option>
+          </select>
+        </div>
+      </div>
+      <div class="layui-form-item">
+        <label class="layui-form-label">源端</label>
+        <div class="layui-input-block">
+          <input type="text" name="src_remote" value="{{.Rule.SrcRemote}}" list="remoteList" autocomplete="off" class="layui-input" placeholder="例如：src">
+        </div>
+      </div>
+      <div class="layui-form-item">
+        <label class="layui-form-label">src_path</label>
+        <div class="layui-input-block">
+          <input type="text" name="src_path" value="{{.Rule.SrcPath}}" placeholder="/Source/A" autocomplete="off" class="layui-input">
+        </div>
+      </div>
+      <div class="layui-form-item">
+        <label class="layui-form-label">目标端</label>
+        <div class="layui-input-block">
+          <input type="text" name="dst_remote" value="{{.Rule.DstRemote}}" list="remoteList" autocomplete="off" class="layui-input" placeholder="例如：dst">
+        </div>
+      </div>
+
+      <datalist id="remoteList">
+        {{range .Remotes}}<option value="{{.}}"></option>{{end}}
+      </datalist>
+      <div class="layui-form-item">
+        <label class="layui-form-label">dst_path</label>
+        <div class="layui-input-block">
+          <input type="text" name="dst_path" value="{{.Rule.DstPath}}" placeholder="/Backup/A" autocomplete="off" class="layui-input">
+        </div>
+      </div>
+      <div class="layui-form-item">
+        <label class="layui-form-label">并发</label>
+        <div class="layui-input-block">
+          <input type="number" name="max_parallel_jobs" value="{{.Rule.MaxParallelJobs}}" class="layui-input">
+        </div>
+      </div>
+      <div class="layui-form-item">
+        <label class="layui-form-label">扫描间隔</label>
+        <div class="layui-input-block">
+          <input type="number" name="scan_interval_sec" value="{{.Rule.ScanIntervalSec}}" class="layui-input">
+        </div>
+      </div>
+      <div class="layui-form-item">
+        <label class="layui-form-label">稳定秒数</label>
+        <div class="layui-input-block">
+          <input type="number" name="stable_seconds" value="{{.Rule.StableSeconds}}" class="layui-input">
+        </div>
+      </div>
+      <div class="layui-form-item">
+        <label class="layui-form-label">批大小</label>
+        <div class="layui-input-block">
+          <input type="number" name="batch_size" value="{{.Rule.BatchSize}}" class="layui-input">
+        </div>
+      </div>
+      <div class="layui-form-item">
+        <div class="layui-input-block">
+          <button class="layui-btn" type="submit">保存</button>
+          <a class="layui-btn layui-btn-primary" href="/rules">返回</a>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+{{end}}
