@@ -5,7 +5,7 @@
     <div class="text-sm opacity-70">使用外部 rclone 配置文件（只需要 remote 名称即可调用）</div>
   </div>
 
-  <div class="card bg-base-100 shadow">
+  <div class="card bg-base-100 border border-base-200">
     <div class="card-body">
       <form method="post" action="/settings/save" class="space-y-4">
         <label class="form-control">
@@ -80,8 +80,8 @@
         </div>
 
         <div class="flex flex-wrap gap-2">
-          <button class="btn btn-primary" type="submit">保存</button>
-          <button class="btn btn-outline" type="button" id="btnCheck">检测 rclone</button>
+          <button class="btn btn-info text-info-content" type="submit">保存</button>
+          <button class="btn btn-ghost" type="button" id="btnCheck">检测 rclone</button>
         </div>
       </form>
 
@@ -130,4 +130,3 @@
   });
 </script>
 {{end}}
-

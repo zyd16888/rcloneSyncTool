@@ -11,7 +11,7 @@
   </div>
   {{end}}
 
-  <div class="card bg-base-100 shadow">
+  <div class="card bg-base-100 border border-base-200">
     <div class="card-body">
       <form method="post" action="/manual/start" class="space-y-4">
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -78,8 +78,8 @@
         </div>
 
         <div class="flex gap-2">
-          <button class="btn btn-primary" type="submit">立即运行</button>
-          <a class="btn btn-outline" href="/rules">返回</a>
+          <button class="btn btn-info text-info-content" type="submit">立即运行</button>
+          <a class="btn btn-ghost" href="/rules">返回</a>
         </div>
       </form>
     </div>
@@ -101,4 +101,3 @@
   }
 </script>
 {{end}}
-

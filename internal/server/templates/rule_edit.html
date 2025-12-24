@@ -11,7 +11,7 @@
   </div>
   {{end}}
 
-  <div class="card bg-base-100 shadow">
+  <div class="card bg-base-100 border border-base-200">
     <div class="card-body">
       <form method="post" action="/rules/save" class="space-y-4">
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -21,20 +21,20 @@
           </label>
 
           <label class="form-control">
+            <div class="label"><span class="label-text">启用</span></div>
+            <select name="enabled" class="select select-bordered">
+              <option value="1" {{if .Rule.Enabled}}selected{{end}}>是</option>
+              <option value="0" {{if .Rule.Enabled}}{{else}}selected{{end}}>否</option>
+            </select>
+            <div class="label"><span class="label-text-alt opacity-70">启用后会按扫描策略自动运行</span></div>
+          </label>
+
+          <label class="form-control">
             <div class="label"><span class="label-text">源类型</span></div>
             <select name="src_kind" id="srcKind" class="select select-bordered">
               <option value="remote" {{if eq .Rule.SrcKind "remote"}}selected{{end}}>remote（远端）</option>
               <option value="local" {{if eq .Rule.SrcKind "local"}}selected{{end}}>local（本地目录）</option>
             </select>
-          </label>
-
-          <label class="form-control">
-            <div class="label"><span class="label-text">启用</span></div>
-            <div class="flex items-center gap-3">
-              <input type="hidden" name="enabled" value="0">
-              <input type="checkbox" name="enabled" value="1" class="toggle toggle-success" {{if .Rule.Enabled}}checked{{end}}>
-              <span class="text-sm opacity-70">启用后会按扫描策略自动运行</span>
-            </div>
           </label>
 
           <label class="form-control">
@@ -67,11 +67,11 @@
             </label>
             <label class="form-control">
               <div class="label"><span class="label-text">本地监控</span></div>
-              <div class="flex items-center gap-3">
-                <input type="hidden" name="local_watch_enabled" value="0">
-                <input type="checkbox" name="local_watch_enabled" value="1" class="toggle toggle-success" {{if .Rule.LocalWatch}}checked{{end}}>
-                <span class="text-sm opacity-70">监听变更触发快速扫描（仍会按扫描间隔兜底）</span>
-              </div>
+              <select name="local_watch_enabled" class="select select-bordered">
+                <option value="1" {{if .Rule.LocalWatch}}selected{{end}}>开</option>
+                <option value="0" {{if .Rule.LocalWatch}}{{else}}selected{{end}}>关</option>
+              </select>
+              <div class="label"><span class="label-text-alt opacity-70">监听变更触发快速扫描（仍会按扫描间隔兜底）</span></div>
             </label>
           </div>
         </div>
@@ -127,8 +127,8 @@
         </div>
 
         <div class="flex gap-2">
-          <button class="btn btn-primary" type="submit">保存</button>
-          <a class="btn btn-outline" href="/rules">返回</a>
+          <button class="btn btn-info text-info-content" type="submit">保存</button>
+          <a class="btn btn-ghost" href="/rules">返回</a>
         </div>
       </form>
     </div>
@@ -150,4 +150,3 @@
   }
 </script>
 {{end}}
-

@@ -6,14 +6,14 @@
   </div>
 
   <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-    <div class="card bg-base-100 shadow">
+    <div class="card bg-base-100 border border-base-200">
       <div class="card-body">
         <div class="card-title text-base">运行信息</div>
         <div class="text-sm"><span class="opacity-70">rclone 配置：</span><b>{{.RcloneConfigPathDisplay}}</b></div>
         <div class="text-sm"><span class="opacity-70">日志目录：</span><b>{{.LogDir}}</b></div>
       </div>
     </div>
-    <div class="card bg-base-100 shadow">
+    <div class="card bg-base-100 border border-base-200">
       <div class="card-body">
         <div class="card-title text-base">整体传输统计</div>
         <div class="text-sm"><span class="opacity-70">已传输总量：</span><b>{{humanBytes .TotalBytes}}</b></div>
@@ -23,7 +23,7 @@
     </div>
   </div>
 
-  <div class="card bg-base-100 shadow">
+  <div class="card bg-base-100 border border-base-200">
     <div class="card-body">
       <div class="card-title text-base">实时曲线</div>
       <div class="flex flex-wrap gap-2 items-center">
@@ -57,11 +57,11 @@
     </div>
   </div>
 
-  <div class="card bg-base-100 shadow">
+  <div class="card bg-base-100 border border-base-200">
     <div class="card-body">
       <div class="card-title text-base">同步规则</div>
       <div class="overflow-x-auto">
-        <table class="table table-zebra">
+        <table class="table table-sm">
           <thead>
             <tr>
               <th>ID</th>
@@ -74,7 +74,7 @@
           </thead>
           <tbody>
             {{range .Rules}}
-            <tr>
+            <tr class="hover:bg-base-200/40">
               <td><a class="link" href="/rules/edit?id={{.Rule.ID}}">{{.Rule.ID}}</a></td>
               <td>{{if .Rule.Enabled}}是{{else}}否{{end}}</td>
               <td>{{.Rule.TransferMode}}</td>
@@ -95,11 +95,11 @@
     </div>
   </div>
 
-  <div class="card bg-base-100 shadow">
+  <div class="card bg-base-100 border border-base-200">
     <div class="card-body">
       <div class="card-title text-base">最近任务</div>
       <div class="overflow-x-auto">
-        <table class="table table-zebra">
+        <table class="table table-sm">
           <thead>
             <tr>
               <th>任务 ID</th>
@@ -113,7 +113,7 @@
           </thead>
           <tbody>
             {{range .Jobs}}
-            <tr>
+            <tr class="hover:bg-base-200/40">
               <td><a class="link" href="/jobs/view?id={{.Job.JobID}}">{{.Job.JobID}}</a></td>
               <td>{{if hasPrefix .Job.RuleID "manual_"}}手动运行{{else}}{{.Job.RuleID}}{{end}}</td>
               <td>{{.Job.TransferMode}}</td>
@@ -140,19 +140,19 @@
               <option value="100" {{if eq .JobsPageSize 100}}selected{{end}}>100 / 页</option>
             </select>
             <input type="number" min="1" max="{{.JobsTotalPages}}" name="jobs_page" value="{{.JobsPage}}" class="input input-bordered input-sm w-28" placeholder="跳转页码">
-            <button class="btn btn-outline btn-sm" type="submit">跳转</button>
+            <button class="btn btn-sm" type="submit">跳转</button>
           </form>
           {{if .JobsHasPrev}}
-            <a class="btn btn-outline btn-sm" href="{{.JobsPrevURL}}">上一页</a>
+            <a class="btn btn-ghost btn-sm" href="{{.JobsPrevURL}}">上一页</a>
           {{else}}
-            <button class="btn btn-outline btn-sm" disabled>上一页</button>
+            <button class="btn btn-ghost btn-sm" disabled>上一页</button>
           {{end}}
           {{if .JobsHasNext}}
-            <a class="btn btn-outline btn-sm" href="{{.JobsNextURL}}">下一页</a>
+            <a class="btn btn-ghost btn-sm" href="{{.JobsNextURL}}">下一页</a>
           {{else}}
-            <button class="btn btn-outline btn-sm" disabled>下一页</button>
+            <button class="btn btn-ghost btn-sm" disabled>下一页</button>
           {{end}}
-          <a class="btn btn-primary btn-sm" href="/jobs">打开任务列表</a>
+          <a class="btn btn-sm btn-info text-info-content" href="/jobs">打开任务列表</a>
         </div>
       </div>
     </div>

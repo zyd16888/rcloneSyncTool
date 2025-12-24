@@ -1,6 +1,6 @@
 {{define "layout"}}
 <!doctype html>
-<html lang="zh-CN" data-theme="corporate">
+<html lang="zh-CN" data-theme="winter">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -8,11 +8,11 @@
     <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
     <link rel="stylesheet" href="/static/app.css">
   </head>
-  <body class="bg-base-200">
+  <body class="bg-base-100">
     <div class="drawer lg:drawer-open">
       <input id="app-drawer" type="checkbox" class="drawer-toggle" />
       <div class="drawer-content flex flex-col">
-        <div class="navbar bg-base-100 shadow-sm sticky top-0 z-10">
+        <div class="navbar bg-base-100 border-b border-base-200 sticky top-0 z-10 h-14 min-h-14">
           <div class="flex-none lg:hidden">
             <label for="app-drawer" class="btn btn-square btn-ghost" aria-label="menu">
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" class="inline-block h-5 w-5 stroke-current">
@@ -32,6 +32,7 @@
         </div>
 
         <main class="p-4 md:p-6">
+          <div class="max-w-7xl mx-auto">
           {{if not .RcloneInstalled}}
             <div class="alert alert-error mb-4">
               <span><b>未检测到 rclone</b>：请先安装 rclone 并确保在 PATH 中，然后重启本程序。</span>
@@ -42,27 +43,28 @@
             </div>
           {{end}}
           {{template "content" .}}
+          </div>
         </main>
       </div>
 
       <div class="drawer-side">
         <label for="app-drawer" class="drawer-overlay"></label>
-        <aside class="w-72 min-h-full bg-base-100 border-r border-base-200">
-          <div class="p-4 border-b border-base-200">
+        <aside class="w-72 min-h-full bg-slate-900 text-slate-100 border-r border-slate-800">
+          <div class="h-14 min-h-14 px-4 flex items-center border-b border-slate-800">
             <a class="flex items-center gap-2 font-bold" href="/">
               <img src="/static/favicon.svg" class="h-5 w-5" alt="icon">
               <span>rclone 同步管理台</span>
             </a>
           </div>
-          <ul class="menu p-4">
-            <li><a class="{{if eq .Active "dashboard"}}active{{end}}" href="/">概览</a></li>
-            <li><a class="{{if eq .Active "remotes"}}active{{end}}" href="/remotes">远程列表</a></li>
-            <li><a class="{{if eq .Active "rules"}}active{{end}}" href="/rules">同步规则</a></li>
-            <li><a class="{{if eq .Active "jobs"}}active{{end}}" href="/jobs">任务列表</a></li>
-            <li><a class="{{if eq .Active "logs"}}active{{end}}" href="/logs">日志</a></li>
-            <li><a class="{{if eq .Active "settings"}}active{{end}}" href="/settings">系统设置</a></li>
+          <ul class="menu p-3 text-sm">
+            <li><a class="{{if eq .Active "dashboard"}}bg-slate-800 text-white{{else}}text-slate-200 hover:bg-slate-800 hover:text-white{{end}}" href="/">概览</a></li>
+            <li><a class="{{if eq .Active "remotes"}}bg-slate-800 text-white{{else}}text-slate-200 hover:bg-slate-800 hover:text-white{{end}}" href="/remotes">远程列表</a></li>
+            <li><a class="{{if eq .Active "rules"}}bg-slate-800 text-white{{else}}text-slate-200 hover:bg-slate-800 hover:text-white{{end}}" href="/rules">同步规则</a></li>
+            <li><a class="{{if eq .Active "jobs"}}bg-slate-800 text-white{{else}}text-slate-200 hover:bg-slate-800 hover:text-white{{end}}" href="/jobs">任务列表</a></li>
+            <li><a class="{{if eq .Active "logs"}}bg-slate-800 text-white{{else}}text-slate-200 hover:bg-slate-800 hover:text-white{{end}}" href="/logs">日志</a></li>
+            <li><a class="{{if eq .Active "settings"}}bg-slate-800 text-white{{else}}text-slate-200 hover:bg-slate-800 hover:text-white{{end}}" href="/settings">系统设置</a></li>
           </ul>
-          <div class="p-4 text-xs opacity-70">
+          <div class="p-4 text-xs text-slate-300">
             本地 Web 管理台（默认仅监听 127.0.0.1）。<br>
             支持任意 rclone remote → remote，以及 local → remote；每个任务独立 RC 端口，统计不会混入系统其他 rclone 任务。
           </div>

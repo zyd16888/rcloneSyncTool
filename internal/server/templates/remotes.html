@@ -11,16 +11,16 @@
   </div>
   {{end}}
 
-  <div class="card bg-base-100 shadow">
+  <div class="card bg-base-100 border border-base-200">
     <div class="card-body">
       <div class="overflow-x-auto">
-        <table class="table table-zebra">
+        <table class="table table-sm">
           <thead>
             <tr><th>名称</th></tr>
           </thead>
           <tbody>
             {{range .Remotes}}
-            <tr><td>{{.}}</td></tr>
+            <tr class="hover:bg-base-200/40"><td>{{.}}</td></tr>
             {{end}}
           </tbody>
         </table>
@@ -29,4 +29,3 @@
   </div>
 </div>
 {{end}}
-

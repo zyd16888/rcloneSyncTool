@@ -5,7 +5,7 @@
     <div class="text-sm opacity-70">每个任务对应一个独立的 rclone 进程与 RC 端口，统计互相隔离</div>
   </div>
 
-  <div class="card bg-base-100 shadow">
+  <div class="card bg-base-100 border border-base-200">
     <div class="card-body">
       <form method="get" action="/jobs" class="flex flex-wrap gap-2 items-end">
         <input type="hidden" name="page" value="1">
@@ -54,15 +54,15 @@
         </label>
 
         <div class="flex gap-2">
-          <button class="btn btn-primary btn-sm" type="submit">筛选</button>
-          <a class="btn btn-outline btn-sm" href="/jobs">重置</a>
+          <button class="btn btn-sm btn-info text-info-content" type="submit">筛选</button>
+          <a class="btn btn-ghost btn-sm" href="/jobs">重置</a>
         </div>
       </form>
 
       <div class="divider my-4"></div>
 
       <div class="overflow-x-auto">
-        <table class="table table-zebra">
+        <table class="table table-sm">
           <thead>
             <tr>
               <th>任务 ID</th>
@@ -79,7 +79,7 @@
           </thead>
           <tbody>
             {{range .Jobs}}
-            <tr>
+            <tr class="hover:bg-base-200/40">
               <td><a class="link" href="/jobs/view?id={{.Job.JobID}}">{{.Job.JobID}}</a></td>
               <td>{{if hasPrefix .Job.RuleID "manual_"}}手动运行{{else}}{{.Job.RuleID}}{{end}}</td>
               <td>{{.Job.TransferMode}}</td>
@@ -118,17 +118,17 @@
             <input type="hidden" name="mode" value="{{.F.TransferMode}}">
             <input type="hidden" name="q" value="{{.F.Query}}">
             <input type="number" min="1" max="{{.TotalPages}}" name="page" value="{{.Page}}" class="input input-bordered input-sm w-28" placeholder="跳转页码">
-            <button class="btn btn-outline btn-sm" type="submit">跳转</button>
+            <button class="btn btn-sm" type="submit">跳转</button>
           </form>
           {{if .HasPrev}}
-            <a class="btn btn-outline btn-sm" href="{{.PrevURL}}">上一页</a>
+            <a class="btn btn-ghost btn-sm" href="{{.PrevURL}}">上一页</a>
           {{else}}
-            <button class="btn btn-outline btn-sm" disabled>上一页</button>
+            <button class="btn btn-ghost btn-sm" disabled>上一页</button>
           {{end}}
           {{if .HasNext}}
-            <a class="btn btn-outline btn-sm" href="{{.NextURL}}">下一页</a>
+            <a class="btn btn-ghost btn-sm" href="{{.NextURL}}">下一页</a>
           {{else}}
-            <button class="btn btn-outline btn-sm" disabled>下一页</button>
+            <button class="btn btn-ghost btn-sm" disabled>下一页</button>
           {{end}}
         </div>
       </div>
@@ -147,4 +147,3 @@
   }, true);
 </script>
 {{end}}
-
