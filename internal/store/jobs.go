@@ -30,6 +30,41 @@ type JobFilter struct {
 	Query        string
 }
 
+type RealtimeSummary struct {
+	BytesTotal   int64
+	SpeedTotal   float64
+	RunningJobs  int
+}
+
+func (s *Store) RealtimeSummary(ctx context.Context, ruleID string) (RealtimeSummary, error) {
+	if strings.TrimSpace(ruleID) == "" {
+		var bytes int64
+		var speed float64
+		var running int
+		if err := s.db.QueryRowContext(ctx, `
+SELECT
+  (SELECT COALESCE(SUM(bytes_done),0) FROM jobs),
+  (SELECT COALESCE(SUM(avg_speed),0) FROM jobs WHERE status='running'),
+  (SELECT COUNT(*) FROM jobs WHERE status='running')
+`).Scan(&bytes, &speed, &running); err != nil {
+			return RealtimeSummary{}, err
+		}
+		return RealtimeSummary{BytesTotal: bytes, SpeedTotal: speed, RunningJobs: running}, nil
+	}
+	var bytes int64
+	var speed float64
+	var running int
+	if err := s.db.QueryRowContext(ctx, `
+SELECT
+  (SELECT COALESCE(SUM(bytes_done),0) FROM jobs WHERE rule_id=?),
+  (SELECT COALESCE(SUM(avg_speed),0) FROM jobs WHERE rule_id=? AND status='running'),
+  (SELECT COUNT(*) FROM jobs WHERE rule_id=? AND status='running')
+`, ruleID, ruleID, ruleID).Scan(&bytes, &speed, &running); err != nil {
+		return RealtimeSummary{}, err
+	}
+	return RealtimeSummary{BytesTotal: bytes, SpeedTotal: speed, RunningJobs: running}, nil
+}
+
 func (s *Store) ListJobs(ctx context.Context, limit int) ([]Job, error) {
 	return s.ListJobsPage(ctx, limit, 0)
 }

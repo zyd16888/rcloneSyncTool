@@ -95,6 +95,9 @@ func New(st *store.Store, supervisor *daemon.Supervisor, logDir string, appLogPa
 	r.POST("/jobs/terminate", s.jobTerminatePost)
 	r.GET("/api/job", s.apiJob)
 	r.GET("/api/job/log/stream", s.apiJobLogStream)
+	r.GET("/api/job/transfers", s.apiJobTransfers)
+
+	r.GET("/api/stats/now", s.apiStatsNow)
 
 	r.GET("/logs", s.logsPage)
 	r.GET("/api/log/daemon/stream", s.apiDaemonLogStream)
@@ -462,6 +465,59 @@ func (s *Server) apiJob(c *gin.Context) {
 		"job":     job,
 		"metric":  metric,
 		"hasMetric": hasM,
+	})
+}
+
+func (s *Server) apiStatsNow(c *gin.Context) {
+	ctx := c.Request.Context()
+	ruleID := strings.TrimSpace(c.Query("rule_id"))
+	sum, err := s.st.RealtimeSummary(ctx, ruleID)
+	if err != nil {
+		c.Status(http.StatusInternalServerError)
+		return
+	}
+	c.Writer.Header().Set("Content-Type", "application/json; charset=utf-8")
+	_ = json.NewEncoder(c.Writer).Encode(map[string]any{
+		"ts": time.Now().UnixMilli(),
+		"ruleID": ruleID,
+		"bytesTotal": sum.BytesTotal,
+		"speedTotal": sum.SpeedTotal,
+		"runningJobs": sum.RunningJobs,
+	})
+}
+
+func (s *Server) apiJobTransfers(c *gin.Context) {
+	ctx := c.Request.Context()
+	id := strings.TrimSpace(c.Query("id"))
+	job, ok, err := s.st.GetJob(ctx, id)
+	if err != nil || !ok {
+		c.Status(http.StatusNotFound)
+		return
+	}
+	if job.Status != "running" || job.RcPort <= 0 {
+		c.Writer.Header().Set("Content-Type", "application/json; charset=utf-8")
+		_ = json.NewEncoder(c.Writer).Encode(map[string]any{
+			"jobID": job.JobID,
+			"running": false,
+			"transfers": []any{},
+		})
+		return
+	}
+	transfers, err := fetchRcloneTransfers(ctx, job.RcPort)
+	c.Writer.Header().Set("Content-Type", "application/json; charset=utf-8")
+	if err != nil {
+		_ = json.NewEncoder(c.Writer).Encode(map[string]any{
+			"jobID": job.JobID,
+			"running": true,
+			"error": err.Error(),
+			"transfers": []any{},
+		})
+		return
+	}
+	_ = json.NewEncoder(c.Writer).Encode(map[string]any{
+		"jobID": job.JobID,
+		"running": true,
+		"transfers": transfers,
 	})
 }
 
