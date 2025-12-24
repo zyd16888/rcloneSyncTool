@@ -51,6 +51,9 @@
           </div>
           <div class="muted">提示：曲线不落库，仅在本页面打开后开始采样。</div>
         </div>
+        <div id="rtEmpty" class="layui-elem-quote layui-quote-nm" style="display:none; margin-bottom: 12px; border-left-color:#16baaa">
+          当前没有运行中的任务，实时曲线将保持空闲状态（当有任务运行时会自动开始绘制）。
+        </div>
         <div class="muted" style="margin-bottom:6px">总速度</div>
         <canvas id="rtSpeed" style="width:100%; height:240px; border:1px solid #eee; border-radius:8px;"></canvas>
         <div class="muted" style="margin-top:12px; margin-bottom:6px">累计已传输</div>
@@ -164,80 +167,162 @@
     });
   });
 
-  const intervalMs = 2000;
-  const rtRule = document.getElementById("rtRule");
-  const rtWindow = document.getElementById("rtWindow");
-  const speedCanvas = document.getElementById("rtSpeed");
-  const bytesCanvas = document.getElementById("rtBytes");
-  const speedChart = createLineChart(speedCanvas, { color: "#16baaa" });
-  const bytesChart = createLineChart(bytesCanvas, { color: "#1e9fff" });
-  let pointsSpeed = [];
-  let pointsBytes = [];
-
-  function canvasFit(canvas) {
-    const dpr = window.devicePixelRatio || 1;
-    const rect = canvas.getBoundingClientRect();
-    const w = Math.max(200, Math.floor(rect.width * dpr));
-    const h = Math.max(160, Math.floor(rect.height * dpr));
-    if (canvas.width !== w) canvas.width = w;
-    if (canvas.height !== h) canvas.height = h;
-  }
-
-  function humanBytes(n) {
-    const u = 1024;
-    if (n < u) return n + " B";
-    const units = ["KiB","MiB","GiB","TiB","PiB"];
-    let i = -1;
-    let v = n;
-    while (v >= u && i < units.length - 1) { v /= u; i++; }
-    return v.toFixed(1) + " " + units[i];
-  }
-  function humanSpeed(n) { return humanBytes(n) + "/s"; }
-
-  function capPoints() {
-    const windowSec = parseInt(rtWindow.value || "3600", 10);
-    const maxPoints = Math.max(10, Math.floor(windowSec * 1000 / intervalMs));
-    if (pointsSpeed.length > maxPoints) {
-      pointsSpeed = pointsSpeed.slice(pointsSpeed.length - maxPoints);
+  // Fallback: if static script failed to load, define chart helper inline.
+  if (typeof createLineChart !== "function") {
+    function createLineChart(canvas, opts) {
+      const options = opts || {};
+      const padding = options.padding || 36;
+      const color = options.color || "#16baaa";
+      const grid = options.grid || "rgba(0,0,0,0.08)";
+      const text = options.text || "rgba(0,0,0,0.55)";
+      const bg = options.bg || "#ffffff";
+      const ctx = canvas.getContext("2d");
+      function draw(points, formatter) {
+        const w = canvas.width;
+        const h = canvas.height;
+        ctx.clearRect(0, 0, w, h);
+        ctx.fillStyle = bg;
+        ctx.fillRect(0, 0, w, h);
+        if (!points || points.length < 2) {
+          ctx.fillStyle = text;
+          ctx.font = "12px sans-serif";
+          ctx.fillText("暂无数据", padding, padding);
+          return;
+        }
+        let minY = Infinity, maxY = -Infinity;
+        for (const p of points) { if (p.y < minY) minY = p.y; if (p.y > maxY) maxY = p.y; }
+        if (!isFinite(minY) || !isFinite(maxY)) return;
+        if (minY === maxY) { maxY = minY + 1; }
+        const minX = points[0].x;
+        const maxX = points[points.length - 1].x;
+        const plotW = w - padding * 2;
+        const plotH = h - padding * 2;
+        const xToPx = (x) => padding + (x - minX) * plotW / Math.max(1, (maxX - minX));
+        const yToPx = (y) => padding + (maxY - y) * plotH / Math.max(1e-9, (maxY - minY));
+        ctx.strokeStyle = grid;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        for (let i = 0; i <= 4; i++) {
+          const y = padding + i * (plotH / 4);
+          ctx.moveTo(padding, y);
+          ctx.lineTo(w - padding, y);
+        }
+        ctx.stroke();
+        ctx.fillStyle = text;
+        ctx.font = "12px sans-serif";
+        const fmt = formatter || ((v) => String(v));
+        ctx.fillText(fmt(maxY), 6, padding + 4);
+        ctx.fillText(fmt(minY), 6, h - padding + 4);
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(xToPx(points[0].x), yToPx(points[0].y));
+        for (let i = 1; i < points.length; i++) ctx.lineTo(xToPx(points[i].x), yToPx(points[i].y));
+        ctx.stroke();
+        const last = points[points.length - 1];
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.arc(xToPx(last.x), yToPx(last.y), 3, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      return { draw };
     }
-    if (pointsBytes.length > maxPoints) {
-      pointsBytes = pointsBytes.slice(pointsBytes.length - maxPoints);
+  }
+
+  function initRealtimeCharts() {
+    const intervalMs = 2000;
+    const rtRule = document.getElementById("rtRule");
+    const rtWindow = document.getElementById("rtWindow");
+    const speedCanvas = document.getElementById("rtSpeed");
+    const bytesCanvas = document.getElementById("rtBytes");
+    const emptyBox = document.getElementById("rtEmpty");
+    if (!rtRule || !rtWindow || !speedCanvas || !bytesCanvas) return;
+
+    const speedChart = createLineChart(speedCanvas, { color: "#16baaa" });
+    const bytesChart = createLineChart(bytesCanvas, { color: "#1e9fff" });
+    let pointsSpeed = [];
+    let pointsBytes = [];
+    let lastRunningJobs = 0;
+    let errorStreak = 0;
+
+    function canvasFit(canvas) {
+      const dpr = window.devicePixelRatio || 1;
+      const rect = canvas.getBoundingClientRect();
+      const w = Math.max(200, Math.floor(rect.width * dpr));
+      const h = Math.max(160, Math.floor(rect.height * dpr));
+      if (canvas.width !== w) canvas.width = w;
+      if (canvas.height !== h) canvas.height = h;
     }
+
+    function humanBytes(n) {
+      const u = 1024;
+      if (n < u) return n + " B";
+      const units = ["KiB","MiB","GiB","TiB","PiB"];
+      let i = -1;
+      let v = n;
+      while (v >= u && i < units.length - 1) { v /= u; i++; }
+      return v.toFixed(1) + " " + units[i];
+    }
+    function humanSpeed(n) { return humanBytes(n) + "/s"; }
+
+    function capPoints() {
+      const windowSec = parseInt(rtWindow.value || "3600", 10);
+      const maxPoints = Math.max(10, Math.floor(windowSec * 1000 / intervalMs));
+      if (pointsSpeed.length > maxPoints) pointsSpeed = pointsSpeed.slice(pointsSpeed.length - maxPoints);
+      if (pointsBytes.length > maxPoints) pointsBytes = pointsBytes.slice(pointsBytes.length - maxPoints);
+    }
+
+    async function tick() {
+      try {
+        const ruleID = rtRule.value || "";
+        const r = await fetch("/api/stats/now?rule_id=" + encodeURIComponent(ruleID));
+        if (!r.ok) return;
+        const d = await r.json();
+        errorStreak = 0;
+        lastRunningJobs = d.runningJobs || 0;
+        if (emptyBox) emptyBox.style.display = lastRunningJobs === 0 ? "" : "none";
+        pointsSpeed.push({ x: d.ts, y: d.speedTotal || 0 });
+        pointsBytes.push({ x: d.ts, y: d.bytesTotal || 0 });
+        capPoints();
+        canvasFit(speedCanvas);
+        canvasFit(bytesCanvas);
+        speedChart.draw(pointsSpeed, (v) => humanSpeed(v));
+        bytesChart.draw(pointsBytes, (v) => humanBytes(v));
+      } catch (e) {
+        errorStreak++;
+        if (emptyBox && errorStreak >= 3) {
+          emptyBox.style.display = "";
+          emptyBox.textContent = "实时采样失败：请检查 /api/stats/now 是否可访问，以及浏览器控制台是否有报错。";
+        }
+      }
+    }
+
+    function reset() {
+      pointsSpeed = [];
+      pointsBytes = [];
+      canvasFit(speedCanvas);
+      canvasFit(bytesCanvas);
+      speedChart.draw(pointsSpeed, (v) => humanSpeed(v));
+      bytesChart.draw(pointsBytes, (v) => humanBytes(v));
+    }
+
+    rtRule.addEventListener("change", reset);
+    rtWindow.addEventListener("change", reset);
+    window.addEventListener("resize", () => {
+      canvasFit(speedCanvas);
+      canvasFit(bytesCanvas);
+      speedChart.draw(pointsSpeed, (v) => humanSpeed(v));
+      bytesChart.draw(pointsBytes, (v) => humanBytes(v));
+    });
+    reset();
+    tick();
+    setInterval(tick, intervalMs);
   }
 
-  async function tick() {
-    const ruleID = rtRule.value || "";
-    const r = await fetch("/api/stats/now?rule_id=" + encodeURIComponent(ruleID));
-    if (!r.ok) return;
-    const d = await r.json();
-    pointsSpeed.push({ x: d.ts, y: d.speedTotal || 0 });
-    pointsBytes.push({ x: d.ts, y: d.bytesTotal || 0 });
-    capPoints();
-    canvasFit(speedCanvas);
-    canvasFit(bytesCanvas);
-    speedChart.draw(pointsSpeed, (v) => humanSpeed(v));
-    bytesChart.draw(pointsBytes, (v) => humanBytes(v));
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", initRealtimeCharts);
+  } else {
+    initRealtimeCharts();
   }
-
-  function reset() {
-    pointsSpeed = [];
-    pointsBytes = [];
-    canvasFit(speedCanvas);
-    canvasFit(bytesCanvas);
-    speedChart.draw(pointsSpeed, (v) => humanSpeed(v));
-    bytesChart.draw(pointsBytes, (v) => humanBytes(v));
-  }
-
-  rtRule.addEventListener("change", reset);
-  rtWindow.addEventListener("change", reset);
-  window.addEventListener("resize", () => {
-    canvasFit(speedCanvas);
-    canvasFit(bytesCanvas);
-    speedChart.draw(pointsSpeed, (v) => humanSpeed(v));
-    bytesChart.draw(pointsBytes, (v) => humanBytes(v));
-  });
-  reset();
-  tick();
-  setInterval(tick, intervalMs);
 </script>
 {{end}}
