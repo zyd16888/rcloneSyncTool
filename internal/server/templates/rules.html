@@ -1,59 +1,77 @@
 {{define "content"}}
-<div class="page-title">同步规则</div>
-<div class="page-subtitle">每条规则独立扫描/队列/任务/统计；支持 copy 或 move</div>
-<div class="toolbar">
-  <a class="layui-btn" href="/rules/edit">新建规则</a>
-  <a class="layui-btn layui-btn-primary" href="/manual">手动运行</a>
-</div>
+<div class="space-y-4">
+  <div class="flex flex-wrap gap-2 items-center justify-between">
+    <div>
+      <h1 class="text-xl font-bold">同步规则</h1>
+      <div class="text-sm opacity-70">每条规则独立扫描/队列/任务/统计；支持 copy 或 move</div>
+    </div>
+    <div class="flex gap-2">
+      <a class="btn btn-primary btn-sm" href="/rules/edit">新建规则</a>
+      <a class="btn btn-outline btn-sm" href="/manual">手动运行</a>
+    </div>
+  </div>
 
-<div class="layui-card">
-  <div class="layui-card-body">
-    <table class="layui-table" lay-skin="line">
-  <tr>
-    <th>ID</th>
-    <th>启用</th>
-    <th>模式</th>
-    <th>映射</th>
-    <th>扫描策略</th>
-    <th>统计</th>
-    <th>操作</th>
-  </tr>
-  {{range .Rules}}
-  <tr>
-    <td><a href="/rules/edit?id={{.Rule.ID}}">{{.Rule.ID}}</a></td>
-    <td>{{if .Rule.Enabled}}是{{else}}否{{end}}</td>
-    <td>{{.Rule.TransferMode}}</td>
-    <td class="muted">
-      {{if eq .Rule.SrcKind "local"}}
-        local:{{.Rule.SrcLocalRoot}} → {{.Rule.DstRemote}}:{{.Rule.DstPath}}
-      {{else}}
-        {{.Rule.SrcRemote}}:{{.Rule.SrcPath}} → {{.Rule.DstRemote}}:{{.Rule.DstPath}}
-      {{end}}
-    </td>
-    <td class="muted">间隔={{.Rule.ScanIntervalSec}}s 稳定={{.Rule.StableSeconds}}s 批={{.Rule.BatchSize}} 并发={{.Rule.MaxParallelJobs}}{{if eq .Rule.SrcKind "local"}} 监控={{if .Rule.LocalWatch}}开{{else}}关{{end}}{{end}}{{if .Rule.Bwlimit}} 限速={{.Rule.Bwlimit}}{{end}}{{if gt .Rule.MinFileSizeBytes 0}} 最小={{humanBytes .Rule.MinFileSizeBytes}}{{end}}</td>
-    <td class="muted">新={{.Counts.New}} 稳定={{.Counts.Stable}} 排队={{.Counts.Queued}} 传输中={{.Counts.Transferring}} 完成={{.Counts.Done}} 失败={{.Counts.Failed}}</td>
-    <td>
-      <form class="inline" method="post" action="/rules/scan">
-        <input type="hidden" name="id" value="{{.Rule.ID}}">
-        <button class="layui-btn layui-btn-primary layui-btn-sm" type="submit">立即扫描</button>
-      </form>
-      <form class="inline" method="post" action="/rules/retry_failed">
-        <input type="hidden" name="id" value="{{.Rule.ID}}">
-        <button class="layui-btn layui-btn-primary layui-btn-sm" type="submit">重试失败</button>
-      </form>
-      <form class="inline" method="post" action="/rules/toggle">
-        <input type="hidden" name="id" value="{{.Rule.ID}}">
-        <input type="hidden" name="enabled" value="{{if .Rule.Enabled}}0{{else}}1{{end}}">
-        <button class="layui-btn layui-btn-sm" type="submit">{{if .Rule.Enabled}}停用{{else}}启用{{end}}</button>
-      </form>
-      <form class="inline" method="post" action="/rules/delete">
-        <input type="hidden" name="id" value="{{.Rule.ID}}">
-        <button class="layui-btn layui-btn-danger layui-btn-sm" type="submit">删除</button>
-      </form>
-    </td>
-  </tr>
-  {{end}}
-    </table>
+  <div class="card bg-base-100 shadow">
+    <div class="card-body">
+      <div class="overflow-x-auto">
+        <table class="table table-zebra">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>启用</th>
+              <th>模式</th>
+              <th>映射</th>
+              <th>扫描策略</th>
+              <th>统计</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            {{range .Rules}}
+            <tr>
+              <td><a class="link" href="/rules/edit?id={{.Rule.ID}}">{{.Rule.ID}}</a></td>
+              <td>{{if .Rule.Enabled}}是{{else}}否{{end}}</td>
+              <td>{{.Rule.TransferMode}}</td>
+              <td class="opacity-70">
+                {{if eq .Rule.SrcKind "local"}}
+                  local:{{.Rule.SrcLocalRoot}} → {{.Rule.DstRemote}}:{{.Rule.DstPath}}
+                {{else}}
+                  {{.Rule.SrcRemote}}:{{.Rule.SrcPath}} → {{.Rule.DstRemote}}:{{.Rule.DstPath}}
+                {{end}}
+              </td>
+              <td class="opacity-70">
+                间隔={{.Rule.ScanIntervalSec}}s 稳定={{.Rule.StableSeconds}}s 批={{.Rule.BatchSize}} 并发={{.Rule.MaxParallelJobs}}
+                {{if eq .Rule.SrcKind "local"}} 监控={{if .Rule.LocalWatch}}开{{else}}关{{end}}{{end}}
+                {{if .Rule.Bwlimit}} 限速={{.Rule.Bwlimit}}{{end}}
+                {{if gt .Rule.MinFileSizeBytes 0}} 最小={{humanBytes .Rule.MinFileSizeBytes}}{{end}}
+              </td>
+              <td class="opacity-70">新={{.Counts.New}} 稳定={{.Counts.Stable}} 排队={{.Counts.Queued}} 传输中={{.Counts.Transferring}} 完成={{.Counts.Done}} 失败={{.Counts.Failed}}</td>
+              <td class="flex flex-wrap gap-2">
+                <form class="inline" method="post" action="/rules/scan">
+                  <input type="hidden" name="id" value="{{.Rule.ID}}">
+                  <button class="btn btn-outline btn-xs" type="submit">立即扫描</button>
+                </form>
+                <form class="inline" method="post" action="/rules/retry_failed">
+                  <input type="hidden" name="id" value="{{.Rule.ID}}">
+                  <button class="btn btn-outline btn-xs" type="submit">重试失败</button>
+                </form>
+                <form class="inline" method="post" action="/rules/toggle">
+                  <input type="hidden" name="id" value="{{.Rule.ID}}">
+                  <input type="hidden" name="enabled" value="{{if .Rule.Enabled}}0{{else}}1{{end}}">
+                  <button class="btn btn-xs {{if .Rule.Enabled}}btn-warning{{else}}btn-success{{end}}" type="submit">{{if .Rule.Enabled}}停用{{else}}启用{{end}}</button>
+                </form>
+                <form class="inline" method="post" action="/rules/delete" onsubmit="return confirm('确定要删除该规则吗？');">
+                  <input type="hidden" name="id" value="{{.Rule.ID}}">
+                  <button class="btn btn-error btn-xs" type="submit">删除</button>
+                </form>
+              </td>
+            </tr>
+            {{end}}
+          </tbody>
+        </table>
+      </div>
+    </div>
   </div>
 </div>
 {{end}}
+

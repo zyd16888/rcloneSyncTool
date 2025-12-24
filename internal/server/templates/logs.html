@@ -1,12 +1,16 @@
 {{define "content"}}
-<div class="page-title">日志</div>
-<div class="page-subtitle">系统运行日志（daemon.log）实时输出</div>
+<div class="space-y-4">
+  <div>
+    <h1 class="text-xl font-bold">日志</h1>
+    <div class="text-sm opacity-70">系统运行日志（daemon.log）实时输出</div>
+  </div>
 
-<div class="layui-card">
-  <div class="layui-card-header">系统日志</div>
-  <div class="layui-card-body">
-    <pre id="daemonLogBox" style="max-height: 560px; overflow:auto; padding: 10px; background: #0b1220; color: #e5e7eb; border-radius: 6px; font-size: 12px; line-height: 1.5;"></pre>
-    <div class="muted" style="margin-top:8px">日志文件：{{.AppLogPath}}</div>
+  <div class="card bg-base-100 shadow">
+    <div class="card-body">
+      <div class="card-title text-base">系统日志</div>
+      <pre id="daemonLogBox" class="bg-neutral text-neutral-content rounded-xl p-3 text-xs leading-relaxed overflow-auto" style="max-height: 560px;"></pre>
+      <div class="text-sm opacity-70 mt-2">日志文件：{{.AppLogPath}}</div>
+    </div>
   </div>
 </div>
 

@@ -1,156 +1,159 @@
 {{define "content"}}
-<div class="page-title">概览</div>
-<div class="page-subtitle">配置、规则、任务实时统计</div>
+<div class="space-y-6">
+  <div>
+    <h1 class="text-xl font-bold">概览</h1>
+    <div class="text-sm opacity-70">配置、规则、任务实时统计</div>
+  </div>
 
-<div class="layui-row layui-col-space15">
-  <div class="layui-col-md12">
-    <div class="layui-card">
-      <div class="layui-card-header">运行信息</div>
-      <div class="layui-card-body">
-        <div><span class="muted">rclone 配置：</span><b>{{.RcloneConfigPathDisplay}}</b></div>
-        <div style="margin-top:6px"><span class="muted">日志目录：</span><b>{{.LogDir}}</b></div>
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+    <div class="card bg-base-100 shadow">
+      <div class="card-body">
+        <div class="card-title text-base">运行信息</div>
+        <div class="text-sm"><span class="opacity-70">rclone 配置：</span><b>{{.RcloneConfigPathDisplay}}</b></div>
+        <div class="text-sm"><span class="opacity-70">日志目录：</span><b>{{.LogDir}}</b></div>
+      </div>
+    </div>
+    <div class="card bg-base-100 shadow">
+      <div class="card-body">
+        <div class="card-title text-base">整体传输统计</div>
+        <div class="text-sm"><span class="opacity-70">已传输总量：</span><b>{{humanBytes .TotalBytes}}</b></div>
+        <div class="text-sm"><span class="opacity-70">当前总速度：</span><b>{{printf "%.1f" .TotalSpeed}} B/s</b></div>
+        <div class="text-sm"><span class="opacity-70">运行中任务：</span><b>{{.RunningJobs}}</b></div>
       </div>
     </div>
   </div>
-</div>
 
-<div class="layui-row layui-col-space15">
-  <div class="layui-col-md12">
-    <div class="layui-card">
-      <div class="layui-card-header">整体传输统计</div>
-      <div class="layui-card-body">
-        <div style="margin-bottom:6px"><span class="muted">已传输总量：</span><b>{{humanBytes .TotalBytes}}</b></div>
-        <div style="margin-bottom:6px"><span class="muted">当前总速度：</span><b>{{printf "%.1f" .TotalSpeed}} B/s</b></div>
-        <div><span class="muted">运行中任务：</span><b>{{.RunningJobs}}</b></div>
+  <div class="card bg-base-100 shadow">
+    <div class="card-body">
+      <div class="card-title text-base">实时曲线</div>
+      <div class="flex flex-wrap gap-2 items-center">
+        <select id="rtRule" class="select select-bordered select-sm w-full sm:w-56">
+          <option value="">全局</option>
+          {{range .Rules}}<option value="{{.Rule.ID}}">{{.Rule.ID}}</option>{{end}}
+        </select>
+        <select id="rtWindow" class="select select-bordered select-sm w-full sm:w-44">
+          <option value="900">最近 15 分钟</option>
+          <option value="3600" selected>最近 1 小时</option>
+          <option value="21600">最近 6 小时</option>
+          <option value="86400">最近 24 小时</option>
+        </select>
+        <div class="text-sm opacity-70">曲线不落库，仅在本页面打开后开始采样。</div>
       </div>
-    </div>
-  </div>
-</div>
 
-<div class="layui-row layui-col-space15">
-  <div class="layui-col-md12">
-    <div class="layui-card">
-      <div class="layui-card-header">实时曲线</div>
-      <div class="layui-card-body">
-        <div class="layui-form" style="display:flex; gap:10px; align-items:center; flex-wrap: wrap; margin-bottom: 10px;">
-          <div class="layui-input-inline" style="width:220px;">
-            <select id="rtRule">
-              <option value="">全局</option>
-              {{range .Rules}}
-                <option value="{{.Rule.ID}}">{{.Rule.ID}}</option>
-              {{end}}
-            </select>
-          </div>
-          <div class="layui-input-inline" style="width:160px;">
-            <select id="rtWindow">
-              <option value="900">最近 15 分钟</option>
-              <option value="3600" selected>最近 1 小时</option>
-              <option value="21600">最近 6 小时</option>
-              <option value="86400">最近 24 小时</option>
-            </select>
-          </div>
-          <div class="muted">提示：曲线不落库，仅在本页面打开后开始采样。</div>
+      <div id="rtEmpty" class="alert alert-info mt-3" style="display:none">
+        <span>当前没有运行中的任务，实时曲线将保持空闲状态（当有任务运行时会自动开始绘制）。</span>
+      </div>
+
+      <div class="mt-4 space-y-4">
+        <div>
+          <div class="text-sm opacity-70 mb-2">总速度</div>
+          <canvas id="rtSpeed" style="width:100%; height:220px; border:1px solid hsl(var(--b2)); border-radius:12px;"></canvas>
         </div>
-        <div id="rtEmpty" class="layui-elem-quote layui-quote-nm" style="display:none; margin-bottom: 12px; border-left-color:#16baaa">
-          当前没有运行中的任务，实时曲线将保持空闲状态（当有任务运行时会自动开始绘制）。
+        <div>
+          <div class="text-sm opacity-70 mb-2">累计已传输</div>
+          <canvas id="rtBytes" style="width:100%; height:220px; border:1px solid hsl(var(--b2)); border-radius:12px;"></canvas>
         </div>
-        <div class="muted" style="margin-bottom:6px">总速度</div>
-        <canvas id="rtSpeed" style="width:100%; height:240px; border:1px solid #eee; border-radius:8px;"></canvas>
-        <div class="muted" style="margin-top:12px; margin-bottom:6px">累计已传输</div>
-        <canvas id="rtBytes" style="width:100%; height:240px; border:1px solid #eee; border-radius:8px;"></canvas>
       </div>
     </div>
   </div>
-</div>
 
-<div class="layui-card">
-  <div class="layui-card-header">同步规则</div>
-  <div class="layui-card-body">
-    <table class="layui-table" lay-skin="line">
-  <tr>
-    <th>ID</th>
-    <th>启用</th>
-    <th>模式</th>
-    <th>映射</th>
-    <th>并发</th>
-    <th>统计</th>
-  </tr>
-  {{range .Rules}}
-  <tr>
-    <td><a href="/rules/edit?id={{.Rule.ID}}">{{.Rule.ID}}</a></td>
-    <td>{{if .Rule.Enabled}}是{{else}}否{{end}}</td>
-    <td>{{.Rule.TransferMode}}</td>
-    <td class="muted">
-      {{if eq .Rule.SrcKind "local"}}
-        local:{{.Rule.SrcLocalRoot}} → {{.Rule.DstRemote}}:{{.Rule.DstPath}}
-      {{else}}
-        {{.Rule.SrcRemote}}:{{.Rule.SrcPath}} → {{.Rule.DstRemote}}:{{.Rule.DstPath}}
-      {{end}}
-    </td>
-    <td class="muted">{{.Rule.MaxParallelJobs}}</td>
-    <td class="muted">新={{.Counts.New}} 稳定={{.Counts.Stable}} 排队={{.Counts.Queued}} 传输中={{.Counts.Transferring}} 完成={{.Counts.Done}} 失败={{.Counts.Failed}}</td>
-  </tr>
-  {{end}}
-    </table>
+  <div class="card bg-base-100 shadow">
+    <div class="card-body">
+      <div class="card-title text-base">同步规则</div>
+      <div class="overflow-x-auto">
+        <table class="table table-zebra">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>启用</th>
+              <th>模式</th>
+              <th>映射</th>
+              <th>并发</th>
+              <th>统计</th>
+            </tr>
+          </thead>
+          <tbody>
+            {{range .Rules}}
+            <tr>
+              <td><a class="link" href="/rules/edit?id={{.Rule.ID}}">{{.Rule.ID}}</a></td>
+              <td>{{if .Rule.Enabled}}是{{else}}否{{end}}</td>
+              <td>{{.Rule.TransferMode}}</td>
+              <td class="opacity-70">
+                {{if eq .Rule.SrcKind "local"}}
+                  local:{{.Rule.SrcLocalRoot}} → {{.Rule.DstRemote}}:{{.Rule.DstPath}}
+                {{else}}
+                  {{.Rule.SrcRemote}}:{{.Rule.SrcPath}} → {{.Rule.DstRemote}}:{{.Rule.DstPath}}
+                {{end}}
+              </td>
+              <td class="opacity-70">{{.Rule.MaxParallelJobs}}</td>
+              <td class="opacity-70">新={{.Counts.New}} 稳定={{.Counts.Stable}} 排队={{.Counts.Queued}} 传输中={{.Counts.Transferring}} 完成={{.Counts.Done}} 失败={{.Counts.Failed}}</td>
+            </tr>
+            {{end}}
+          </tbody>
+        </table>
+      </div>
+    </div>
   </div>
-</div>
 
-<div class="layui-card">
-  <div class="layui-card-header">最近任务</div>
-  <div class="layui-card-body">
-    <table class="layui-table" lay-skin="line">
-  <tr>
-    <th>任务 ID</th>
-    <th>规则</th>
-    <th>模式</th>
-    <th>状态</th>
-    <th>开始时间</th>
-    <th>已传输</th>
-    <th>速度</th>
-  </tr>
-  {{range .Jobs}}
-  <tr>
-    <td><a href="/jobs/view?id={{.Job.JobID}}">{{.Job.JobID}}</a></td>
-    <td>{{if hasPrefix .Job.RuleID "manual_"}}手动运行{{else}}{{.Job.RuleID}}{{end}}</td>
-    <td>{{.Job.TransferMode}}</td>
-    <td>
-      <span class="layui-badge {{if eq .Job.Status "running"}}layui-bg-green{{else if eq .Job.Status "failed"}}layui-bg-red{{else if eq .Job.Status "terminated"}}layui-bg-orange{{else}}layui-bg-blue{{end}}">{{.Job.Status}}</span>
-    </td>
-    <td class="muted">{{ts .Job.StartedAt}}</td>
-    <td class="muted">{{if .HasM}}{{humanBytes .Metric.Bytes}}{{else}}{{humanBytes .Job.BytesDone}}{{end}}</td>
-    <td class="muted">{{if .HasM}}{{printf "%.1f" .Metric.Speed}} B/s{{else}}{{printf "%.1f" .Job.AvgSpeed}} B/s{{end}}</td>
-  </tr>
-  {{end}}
-    </table>
+  <div class="card bg-base-100 shadow">
+    <div class="card-body">
+      <div class="card-title text-base">最近任务</div>
+      <div class="overflow-x-auto">
+        <table class="table table-zebra">
+          <thead>
+            <tr>
+              <th>任务 ID</th>
+              <th>规则</th>
+              <th>模式</th>
+              <th>状态</th>
+              <th>开始时间</th>
+              <th>已传输</th>
+              <th>速度</th>
+            </tr>
+          </thead>
+          <tbody>
+            {{range .Jobs}}
+            <tr>
+              <td><a class="link" href="/jobs/view?id={{.Job.JobID}}">{{.Job.JobID}}</a></td>
+              <td>{{if hasPrefix .Job.RuleID "manual_"}}手动运行{{else}}{{.Job.RuleID}}{{end}}</td>
+              <td>{{.Job.TransferMode}}</td>
+              <td>
+                <span class="badge {{if eq .Job.Status "running"}}badge-success{{else if eq .Job.Status "failed"}}badge-error{{else if eq .Job.Status "terminated"}}badge-warning{{else}}badge-info{{end}}">{{.Job.Status}}</span>
+              </td>
+              <td class="opacity-70">{{ts .Job.StartedAt}}</td>
+              <td class="opacity-70">{{if .HasM}}{{humanBytes .Metric.Bytes}}{{else}}{{humanBytes .Job.BytesDone}}{{end}}</td>
+              <td class="opacity-70">{{if .HasM}}{{printf "%.1f" .Metric.Speed}} B/s{{else}}{{printf "%.1f" .Job.AvgSpeed}} B/s{{end}}</td>
+            </tr>
+            {{end}}
+          </tbody>
+        </table>
+      </div>
 
-    <div class="toolbar" style="justify-content: space-between; margin-top: 10px;">
-      <div class="muted">共 {{.JobsTotal}} 条，页大小 {{.JobsPageSize}}，第 {{.JobsPage}} / {{.JobsTotalPages}} 页</div>
-      <div style="display:flex; gap:8px; align-items:center;">
-        <form class="layui-form" method="get" action="/" style="display:flex; gap:8px; align-items:center;">
-          <div class="layui-input-inline" style="width:120px;">
-            <select name="jobs_page_size" lay-filter="jobsPageSize">
+      <div class="mt-3 flex flex-wrap gap-2 items-center justify-between">
+        <div class="text-sm opacity-70">共 {{.JobsTotal}} 条，页大小 {{.JobsPageSize}}，第 {{.JobsPage}} / {{.JobsTotalPages}} 页</div>
+        <div class="flex flex-wrap gap-2 items-center">
+          <form method="get" action="/" class="flex flex-wrap gap-2 items-center">
+            <select name="jobs_page_size" class="select select-bordered select-sm" onchange="this.form.jobs_page.value='1'; this.form.submit();">
               <option value="10" {{if eq .JobsPageSize 10}}selected{{end}}>10 / 页</option>
               <option value="20" {{if eq .JobsPageSize 20}}selected{{end}}>20 / 页</option>
               <option value="50" {{if eq .JobsPageSize 50}}selected{{end}}>50 / 页</option>
               <option value="100" {{if eq .JobsPageSize 100}}selected{{end}}>100 / 页</option>
             </select>
-          </div>
-          <div class="layui-input-inline" style="width:120px;">
-            <input type="number" min="1" max="{{.JobsTotalPages}}" name="jobs_page" value="{{.JobsPage}}" class="layui-input" placeholder="跳转页码">
-          </div>
-          <button class="layui-btn layui-btn-primary layui-btn-sm" type="submit">跳转</button>
-        </form>
-        {{if .JobsHasPrev}}
-          <a class="layui-btn layui-btn-primary layui-btn-sm" href="{{.JobsPrevURL}}">上一页</a>
-        {{else}}
-          <span class="layui-btn layui-btn-disabled layui-btn-sm">上一页</span>
-        {{end}}
-        {{if .JobsHasNext}}
-          <a class="layui-btn layui-btn-primary layui-btn-sm" href="{{.JobsNextURL}}">下一页</a>
-        {{else}}
-          <span class="layui-btn layui-btn-disabled layui-btn-sm">下一页</span>
-        {{end}}
-        <a class="layui-btn layui-btn-sm" href="/jobs">打开任务列表</a>
+            <input type="number" min="1" max="{{.JobsTotalPages}}" name="jobs_page" value="{{.JobsPage}}" class="input input-bordered input-sm w-28" placeholder="跳转页码">
+            <button class="btn btn-outline btn-sm" type="submit">跳转</button>
+          </form>
+          {{if .JobsHasPrev}}
+            <a class="btn btn-outline btn-sm" href="{{.JobsPrevURL}}">上一页</a>
+          {{else}}
+            <button class="btn btn-outline btn-sm" disabled>上一页</button>
+          {{end}}
+          {{if .JobsHasNext}}
+            <a class="btn btn-outline btn-sm" href="{{.JobsNextURL}}">下一页</a>
+          {{else}}
+            <button class="btn btn-outline btn-sm" disabled>下一页</button>
+          {{end}}
+          <a class="btn btn-primary btn-sm" href="/jobs">打开任务列表</a>
+        </div>
       </div>
     </div>
   </div>
@@ -158,31 +161,6 @@
 
 <script src="/static/realtime_chart.js"></script>
 <script>
-  layui.use(['form'], function(){
-    const form = layui.form;
-    form.render();
-    form.on('select(jobsPageSize)', function(data){
-      const f = data.elem ? data.elem.closest('form') : null;
-      if (f) {
-        const pageInput = f.querySelector('input[name="jobs_page"]');
-        if (pageInput) pageInput.value = "1";
-        f.submit();
-      }
-    });
-  });
-
-  // Fallback (in case Layui select event doesn't fire)
-  document.addEventListener('change', (e) => {
-    const t = e.target;
-    if (!t || t.tagName !== 'SELECT') return;
-    if (t.name !== 'jobs_page_size') return;
-    const f = t.closest('form');
-    if (!f) return;
-    const pageInput = f.querySelector('input[name="jobs_page"]');
-    if (pageInput) pageInput.value = "1";
-    f.submit();
-  }, true);
-
   // Fallback: if static script failed to load, define chart helper inline.
   if (typeof createLineChart !== "function") {
     function createLineChart(canvas, opts) {
@@ -258,7 +236,6 @@
     const bytesChart = createLineChart(bytesCanvas, { color: "#1e9fff" });
     let pointsSpeed = [];
     let pointsBytes = [];
-    let lastRunningJobs = 0;
     let errorStreak = 0;
 
     function canvasFit(canvas) {
@@ -295,8 +272,7 @@
         if (!r.ok) return;
         const d = await r.json();
         errorStreak = 0;
-        lastRunningJobs = d.runningJobs || 0;
-        if (emptyBox) emptyBox.style.display = lastRunningJobs === 0 ? "" : "none";
+        if (emptyBox) emptyBox.style.display = (d.runningJobs || 0) === 0 ? "" : "none";
         pointsSpeed.push({ x: d.ts, y: d.speedTotal || 0 });
         pointsBytes.push({ x: d.ts, y: d.bytesTotal || 0 });
         capPoints();
@@ -308,6 +284,7 @@
         errorStreak++;
         if (emptyBox && errorStreak >= 3) {
           emptyBox.style.display = "";
+          emptyBox.classList.add("alert-warning");
           emptyBox.textContent = "实时采样失败：请检查 /api/stats/now 是否可访问，以及浏览器控制台是否有报错。";
         }
       }

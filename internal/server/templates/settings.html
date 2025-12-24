@@ -1,137 +1,133 @@
 {{define "content"}}
-<div class="page-title">系统设置</div>
-<div class="page-subtitle">使用外部 rclone 配置文件（只需要 remote 名称即可调用）</div>
+<div class="space-y-4">
+  <div>
+    <h1 class="text-xl font-bold">系统设置</h1>
+    <div class="text-sm opacity-70">使用外部 rclone 配置文件（只需要 remote 名称即可调用）</div>
+  </div>
 
-<div class="layui-card">
-  <div class="layui-card-body">
-    <form class="layui-form" method="post" action="/settings/save">
-      <div class="layui-form-item">
-        <label class="layui-form-label">配置路径</label>
-        <div class="layui-input-block">
-          <input type="text" name="rclone_config_path" value="{{index .S "rclone_config_path"}}" class="layui-input" placeholder="留空：使用 rclone 默认配置路径；填写：例如 C:\\Users\\you\\AppData\\Roaming\\rclone\\rclone.conf">
-          <div class="muted" style="margin-top:6px">当前：{{.RcloneConfigPathDisplay}}</div>
+  <div class="card bg-base-100 shadow">
+    <div class="card-body">
+      <form method="post" action="/settings/save" class="space-y-4">
+        <label class="form-control">
+          <div class="label"><span class="label-text">配置路径</span></div>
+          <input type="text" name="rclone_config_path" value="{{index .S "rclone_config_path"}}" class="input input-bordered" placeholder="留空：使用 rclone 默认配置路径；填写：例如 C:\Users\you\AppData\Roaming\rclone\rclone.conf">
+          <div class="label"><span class="label-text-alt opacity-70">当前：{{.RcloneConfigPathDisplay}}</span></div>
+        </label>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <label class="form-control">
+            <div class="label"><span class="label-text">总并发</span></div>
+            <input type="number" name="global_max_jobs" value="{{index .S "global_max_jobs"}}" class="input input-bordered" placeholder="0 表示不限制">
+            <div class="label"><span class="label-text-alt opacity-70">限制全局同时运行的任务数（跨所有规则）。</span></div>
+          </label>
+          <label class="form-control">
+            <div class="label"><span class="label-text">日志保留（天）</span></div>
+            <input type="number" name="log_retention_days" value="{{index .S "log_retention_days"}}" class="input input-bordered" placeholder="默认 7；0 不清理">
+            <div class="label"><span class="label-text-alt opacity-70">清理多少天前的任务日志/临时目录。</span></div>
+          </label>
+          <label class="form-control">
+            <div class="label"><span class="label-text">bwlimit</span></div>
+            <input type="text" name="rclone_bwlimit" value="{{index .S "rclone_bwlimit"}}" class="input input-bordered" placeholder="例如 8M / 1.5M / 留空">
+            <div class="label"><span class="label-text-alt opacity-70">默认限速（规则里可覆盖）。</span></div>
+          </label>
         </div>
-      </div>
-      <div class="layui-form-item">
-        <label class="layui-form-label">总并发</label>
-        <div class="layui-input-block">
-          <input type="number" name="global_max_jobs" value="{{index .S "global_max_jobs"}}" class="layui-input" placeholder="0 表示不限制">
-          <div class="muted" style="margin-top:6px">限制全局同时运行的任务数（跨所有规则）。0 表示不限制。</div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div class="grid grid-cols-2 gap-4">
+            <label class="form-control">
+              <div class="label"><span class="label-text">RC 起始</span></div>
+              <input type="number" name="rc_port_start" value="{{index .S "rc_port_start"}}" class="input input-bordered">
+            </label>
+            <label class="form-control">
+              <div class="label"><span class="label-text">RC 结束</span></div>
+              <input type="number" name="rc_port_end" value="{{index .S "rc_port_end"}}" class="input input-bordered">
+            </label>
+          </div>
+          <div class="grid grid-cols-2 gap-4">
+            <label class="form-control">
+              <div class="label"><span class="label-text">transfers</span></div>
+              <input type="number" name="rclone_transfers" value="{{index .S "rclone_transfers"}}" class="input input-bordered">
+            </label>
+            <label class="form-control">
+              <div class="label"><span class="label-text">checkers</span></div>
+              <input type="number" name="rclone_checkers" value="{{index .S "rclone_checkers"}}" class="input input-bordered">
+            </label>
+          </div>
         </div>
-      </div>
-      <div class="layui-form-item">
-        <label class="layui-form-label">日志保留</label>
-        <div class="layui-input-block">
-          <input type="number" name="log_retention_days" value="{{index .S "log_retention_days"}}" class="layui-input" placeholder="默认 7；0 不清理">
-          <div class="muted" style="margin-top:6px">自动清理多少天前的任务日志/临时目录。默认 7；0 表示不清理。</div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <label class="form-control">
+            <div class="label"><span class="label-text">buffer-size</span></div>
+            <input type="text" name="rclone_buffer_size" value="{{index .S "rclone_buffer_size"}}" class="input input-bordered" placeholder="例如 64M">
+          </label>
+          <label class="form-control">
+            <div class="label"><span class="label-text">chunk-size</span></div>
+            <input type="text" name="rclone_drive_chunk_size" value="{{index .S "rclone_drive_chunk_size"}}" class="input input-bordered" placeholder="例如 64M">
+          </label>
         </div>
-      </div>
-      <div class="layui-form-item">
-        <label class="layui-form-label">RC 起始</label>
-        <div class="layui-input-block">
-          <input type="number" name="rc_port_start" value="{{index .S "rc_port_start"}}" class="layui-input">
-          <div class="muted" style="margin-top:6px">每个任务会启动独立 rclone RC 端口，用于隔离统计。</div>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <label class="form-control">
+            <div class="label"><span class="label-text">采样间隔（ms）</span></div>
+            <input type="number" name="metrics_interval_ms" value="{{index .S "metrics_interval_ms"}}" class="input input-bordered">
+            <div class="label"><span class="label-text-alt opacity-70">轮询 rclone RC 统计的间隔（毫秒）。</span></div>
+          </label>
+          <label class="form-control">
+            <div class="label"><span class="label-text">调度 tick（ms）</span></div>
+            <input type="number" name="scheduler_tick_ms" value="{{index .S "scheduler_tick_ms"}}" class="input input-bordered">
+            <div class="label"><span class="label-text-alt opacity-70">调度器检查队列并启动任务的周期（毫秒）。</span></div>
+          </label>
         </div>
-      </div>
-      <div class="layui-form-item">
-        <label class="layui-form-label">RC 结束</label>
-        <div class="layui-input-block">
-          <input type="number" name="rc_port_end" value="{{index .S "rc_port_end"}}" class="layui-input">
+
+        <div class="flex flex-wrap gap-2">
+          <button class="btn btn-primary" type="submit">保存</button>
+          <button class="btn btn-outline" type="button" id="btnCheck">检测 rclone</button>
         </div>
-      </div>
-      <div class="layui-form-item">
-        <label class="layui-form-label">transfers</label>
-        <div class="layui-input-block">
-          <input type="number" name="rclone_transfers" value="{{index .S "rclone_transfers"}}" class="layui-input">
-          <div class="muted" style="margin-top:6px">rclone 并发传输数（每个任务内部的并发）。</div>
-        </div>
-      </div>
-      <div class="layui-form-item">
-        <label class="layui-form-label">checkers</label>
-        <div class="layui-input-block">
-          <input type="number" name="rclone_checkers" value="{{index .S "rclone_checkers"}}" class="layui-input">
-          <div class="muted" style="margin-top:6px">rclone 校验线程数（每个任务内部）。</div>
-        </div>
-      </div>
-      <div class="layui-form-item">
-        <label class="layui-form-label">buffer-size</label>
-        <div class="layui-input-block">
-          <input type="text" name="rclone_buffer_size" value="{{index .S "rclone_buffer_size"}}" class="layui-input">
-          <div class="muted" style="margin-top:6px">rclone <code>--buffer-size</code>（如 64M）。</div>
-        </div>
-      </div>
-      <div class="layui-form-item">
-        <label class="layui-form-label">chunk-size</label>
-        <div class="layui-input-block">
-          <input type="text" name="rclone_drive_chunk_size" value="{{index .S "rclone_drive_chunk_size"}}" class="layui-input">
-          <div class="muted" style="margin-top:6px">rclone <code>--drive-chunk-size</code>（主要对 Google Drive 有用）。</div>
-        </div>
-      </div>
-      <div class="layui-form-item">
-        <label class="layui-form-label">bwlimit</label>
-        <div class="layui-input-block">
-          <input type="text" name="rclone_bwlimit" value="{{index .S "rclone_bwlimit"}}" class="layui-input">
-          <div class="muted" style="margin-top:6px">默认限速（rclone <code>--bwlimit</code>，如 <code>8M</code>、<code>1.5M</code>）。规则里可单独覆盖。</div>
-        </div>
-      </div>
-      <div class="layui-form-item">
-        <label class="layui-form-label">采样间隔</label>
-        <div class="layui-input-block">
-          <input type="number" name="metrics_interval_ms" value="{{index .S "metrics_interval_ms"}}" class="layui-input">
-          <div class="muted" style="margin-top:6px">轮询 rclone RC 统计的间隔（毫秒）。越小越实时，但更耗资源。</div>
-        </div>
-      </div>
-      <div class="layui-form-item">
-        <label class="layui-form-label">调度 tick</label>
-        <div class="layui-input-block">
-          <input type="number" name="scheduler_tick_ms" value="{{index .S "scheduler_tick_ms"}}" class="layui-input">
-          <div class="muted" style="margin-top:6px">调度器检查队列并启动任务的周期（毫秒）。</div>
-        </div>
-      </div>
-      <div class="layui-form-item">
-        <div class="layui-input-block">
-          <button class="layui-btn" type="submit">保存</button>
-          <button class="layui-btn layui-btn-primary" type="button" id="btnCheck">检测 rclone</button>
-        </div>
-      </div>
-    </form>
-    <div class="muted">日志目录：{{.LogDir}}</div>
+      </form>
+
+      <div class="text-sm opacity-70 mt-3">日志目录：{{.LogDir}}</div>
+    </div>
   </div>
 </div>
 
+<dialog id="rcloneModal" class="modal">
+  <div class="modal-box max-w-3xl">
+    <h3 class="font-bold text-lg mb-2">rclone 检测</h3>
+    <div id="rcloneModalBody" class="text-sm opacity-80 whitespace-pre-wrap"></div>
+    <div class="modal-action">
+      <form method="dialog">
+        <button class="btn">关闭</button>
+      </form>
+    </div>
+  </div>
+  <form method="dialog" class="modal-backdrop"><button>close</button></form>
+</dialog>
+
 <script>
-  layui.use(['layer'], function(){
-    const layer = layui.layer;
-    const btn = document.getElementById('btnCheck');
-    btn.addEventListener('click', async () => {
-      try {
-        const r = await fetch('/api/rclone/check');
-        const d = await r.json();
-        if (!d.installed) {
-          layer.alert((d.hint || '未检测到 rclone') + '<br><br>请自行安装后重启终端/服务。', {title: 'rclone 检测'});
-          return;
-        }
-        const remotes = (d.remotes || []).slice(0, 50).join('<br>');
-        layer.open({
-          type: 1,
-          title: 'rclone 检测',
-          area: ['720px', '520px'],
-          shadeClose: true,
-          content:
-            '<div style="padding:14px;line-height:1.7">' +
-            '<div><b>PATH</b>: ' + (d.path || '') + '</div>' +
-            '<div><b>版本</b>: ' + (d.version || d.versionError || '') + '</div>' +
-            '<div><b>配置</b>: ' + (d.configPathDisplay || '') + '</div>' +
-            '<div style="margin-top:10px"><b>Remotes</b>（最多50个）:</div>' +
-            '<div class="layui-text" style="margin-top:6px;max-height:320px;overflow:auto;border:1px solid #eee;padding:10px;border-radius:6px;background:#fafafa">' +
-            (remotes || (d.remotesError || '')) +
-            '</div>' +
-            '</div>'
-        });
-      } catch (e) {
-        layer.alert('检测失败：' + e, {title: 'rclone 检测'});
+  const btn = document.getElementById('btnCheck');
+  const dlg = document.getElementById('rcloneModal');
+  const body = document.getElementById('rcloneModalBody');
+  btn?.addEventListener('click', async () => {
+    body.textContent = '检测中...';
+    dlg?.showModal();
+    try {
+      const r = await fetch('/api/rclone/check');
+      const d = await r.json();
+      if (!d.installed) {
+        body.textContent = (d.hint || '未检测到 rclone') + '\n\n请自行安装后重启终端/服务。';
+        return;
       }
-    });
+      const remotes = (d.remotes || []).slice(0, 50);
+      body.textContent =
+        'PATH: ' + (d.path || '') + '\n' +
+        '版本: ' + (d.version || d.versionError || '') + '\n' +
+        '配置: ' + (d.configPathDisplay || '') + '\n\n' +
+        'Remotes（最多50个）:\n' +
+        (remotes.length ? remotes.join('\n') : (d.remotesError || ''));
+    } catch (e) {
+      body.textContent = '检测失败：' + e;
+    }
   });
 </script>
 {{end}}
+

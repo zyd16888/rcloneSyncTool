@@ -1,51 +1,74 @@
 {{define "layout"}}
 <!doctype html>
-<html>
+<html lang="zh-CN" data-theme="corporate">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>rclone 同步管理台</title>
     <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
-    <link rel="stylesheet" href="/static/vendor/layui/css/layui.css">
-    <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="/static/app.css">
   </head>
-  <body>
-    <div class="layui-layout layui-layout-admin app-layout">
-      <div class="layui-side layui-bg-black app-side">
-        <div class="app-brand"><i class="layui-icon layui-icon-transfer" style="margin-right:8px"></i>rclone 同步管理台</div>
-        <ul class="layui-nav layui-nav-tree" lay-filter="side-nav">
-          <li class="layui-nav-item {{if eq .Active "dashboard"}}layui-this{{end}}"><a href="/">概览</a></li>
-          <li class="layui-nav-item {{if eq .Active "remotes"}}layui-this{{end}}"><a href="/remotes">远程列表</a></li>
-          <li class="layui-nav-item {{if eq .Active "rules"}}layui-this{{end}}"><a href="/rules">同步规则</a></li>
-          <li class="layui-nav-item {{if eq .Active "jobs"}}layui-this{{end}}"><a href="/jobs">任务列表</a></li>
-          <li class="layui-nav-item {{if eq .Active "logs"}}layui-this{{end}}"><a href="/logs">日志</a></li>
-          <li class="layui-nav-item {{if eq .Active "settings"}}layui-this{{end}}"><a href="/settings">系统设置</a></li>
-        </ul>
-        <div class="app-hint">
-          本地 Web 管理台（默认仅监听 127.0.0.1）。<br>
-          支持任意 rclone remote → remote，以及 local → remote；每个任务独立 RC 端口，统计不会混入系统其他 rclone 任务。
+  <body class="bg-base-200">
+    <div class="drawer lg:drawer-open">
+      <input id="app-drawer" type="checkbox" class="drawer-toggle" />
+      <div class="drawer-content flex flex-col">
+        <div class="navbar bg-base-100 shadow-sm sticky top-0 z-10">
+          <div class="flex-none lg:hidden">
+            <label for="app-drawer" class="btn btn-square btn-ghost" aria-label="menu">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" class="inline-block h-5 w-5 stroke-current">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path>
+              </svg>
+            </label>
+          </div>
+          <div class="flex-1">
+            <a class="btn btn-ghost text-lg font-bold gap-2" href="/">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="h-5 w-5">
+                <path d="M4.5 8.25A3.75 3.75 0 0 1 8.25 4.5h7.5A3.75 3.75 0 0 1 19.5 8.25v7.5A3.75 3.75 0 0 1 15.75 19.5h-7.5A3.75 3.75 0 0 1 4.5 15.75v-7.5Z" opacity=".25"/>
+                <path d="M8.47 9.53a.75.75 0 0 1 1.06 0l1.72 1.72 3.22-3.22a.75.75 0 1 1 1.06 1.06l-3.75 3.75a.75.75 0 0 1-1.06 0L8.47 10.6a.75.75 0 0 1 0-1.06Z"/>
+              </svg>
+              rclone 同步管理台
+            </a>
+          </div>
         </div>
-      </div>
-      <div class="layui-body app-body">
-        <div class="app-content">
+
+        <main class="p-4 md:p-6">
           {{if not .RcloneInstalled}}
-          <div class="layui-elem-quote layui-quote-nm" style="border-left-color:#FF5722">
-            <b>未检测到 rclone</b>：请先安装 rclone 并确保在 PATH 中，然后重启本程序。<br>
-            Windows 建议用 Scoop/Chocolatey 安装；Linux 可用包管理器或下载官方二进制。
-          </div>
+            <div class="alert alert-error mb-4">
+              <span><b>未检测到 rclone</b>：请先安装 rclone 并确保在 PATH 中，然后重启本程序。</span>
+            </div>
           {{else if .RcloneConfigMissing}}
-          <div class="layui-elem-quote layui-quote-nm" style="border-left-color:#FFB800">
-            <b>rclone 配置文件不可用</b>：{{.RcloneConfigPathDisplay}}（请到「系统设置」里修正路径或留空使用默认配置）
-          </div>
+            <div class="alert alert-warning mb-4">
+              <span><b>rclone 配置文件不可用</b>：{{.RcloneConfigPathDisplay}}（请到「系统设置」里修正路径或留空使用默认配置）</span>
+            </div>
           {{end}}
           {{template "content" .}}
-        </div>
+        </main>
+      </div>
+
+      <div class="drawer-side">
+        <label for="app-drawer" class="drawer-overlay"></label>
+        <aside class="w-72 min-h-full bg-base-100 border-r border-base-200">
+          <div class="p-4 border-b border-base-200">
+            <a class="flex items-center gap-2 font-bold" href="/">
+              <img src="/static/favicon.svg" class="h-5 w-5" alt="icon">
+              <span>rclone 同步管理台</span>
+            </a>
+          </div>
+          <ul class="menu p-4">
+            <li><a class="{{if eq .Active "dashboard"}}active{{end}}" href="/">概览</a></li>
+            <li><a class="{{if eq .Active "remotes"}}active{{end}}" href="/remotes">远程列表</a></li>
+            <li><a class="{{if eq .Active "rules"}}active{{end}}" href="/rules">同步规则</a></li>
+            <li><a class="{{if eq .Active "jobs"}}active{{end}}" href="/jobs">任务列表</a></li>
+            <li><a class="{{if eq .Active "logs"}}active{{end}}" href="/logs">日志</a></li>
+            <li><a class="{{if eq .Active "settings"}}active{{end}}" href="/settings">系统设置</a></li>
+          </ul>
+          <div class="p-4 text-xs opacity-70">
+            本地 Web 管理台（默认仅监听 127.0.0.1）。<br>
+            支持任意 rclone remote → remote，以及 local → remote；每个任务独立 RC 端口，统计不会混入系统其他 rclone 任务。
+          </div>
+        </aside>
       </div>
     </div>
-    <script src="/static/vendor/layui/layui.js"></script>
-    <script>
-      layui.use(['element','form'], function(){});
-    </script>
   </body>
 </html>
 {{end}}

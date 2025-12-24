@@ -1,167 +1,153 @@
 {{define "content"}}
-<div class="page-title">编辑规则</div>
-<div class="page-subtitle">每条规则独立运行；copy 不删源端，move 成功后删除源端</div>
+<div class="space-y-4">
+  <div>
+    <h1 class="text-xl font-bold">编辑规则</h1>
+    <div class="text-sm opacity-70">每条规则独立运行；copy 不删源端，move 成功后删除源端</div>
+  </div>
 
-{{if .Error}}
-<div class="layui-elem-quote layui-quote-nm" style="border-left-color:#FFB800">
-  <b>提示：</b>{{.Error}}<br>
-  你仍可手动输入 remote 名称，但扫描/传输时 rclone 必须能解析到该 remote。
-</div>
-{{end}}
+  {{if .Error}}
+  <div class="alert alert-warning">
+    <span><b>提示：</b>{{.Error}} 你仍可手动输入 remote 名称，但扫描/传输时 rclone 必须能解析到该 remote。</span>
+  </div>
+  {{end}}
 
-<div class="layui-card">
-  <div class="layui-card-body">
-    <form class="layui-form" method="post" action="/rules/save">
-      <div class="layui-form-item">
-        <label class="layui-form-label">源类型</label>
-        <div class="layui-input-block">
-          <select name="src_kind" lay-filter="srcKind">
-            <option value="remote" {{if eq .Rule.SrcKind "remote"}}selected{{end}}>remote（远端）</option>
-            <option value="local" {{if eq .Rule.SrcKind "local"}}selected{{end}}>local（本地目录）</option>
-          </select>
-          <div class="muted" style="margin-top:6px">remote：用 <code>remote:path</code> 扫描；local：监控/扫描本机目录后传到目标 remote。</div>
-        </div>
-      </div>
-      <div class="layui-form-item">
-        <label class="layui-form-label">规则 ID</label>
-        <div class="layui-input-block">
-          <input type="text" name="id" value="{{.Rule.ID}}" placeholder="例如：ruleA" autocomplete="off" class="layui-input">
-        </div>
-      </div>
-      <div class="layui-form-item">
-        <label class="layui-form-label">启用</label>
-        <div class="layui-input-block">
-          <select name="enabled">
-            <option value="1" {{if .Rule.Enabled}}selected{{end}}>是</option>
-            <option value="0" {{if .Rule.Enabled}}{{else}}selected{{end}}>否</option>
-          </select>
-        </div>
-      </div>
-      <div class="layui-form-item">
-        <label class="layui-form-label">模式</label>
-        <div class="layui-input-block">
-          <select name="transfer_mode">
-            <option value="copy" {{if eq .Rule.TransferMode "copy"}}selected{{end}}>copy（不删除源端）</option>
-            <option value="move" {{if eq .Rule.TransferMode "move"}}selected{{end}}>move（成功后删除源端）</option>
-          </select>
-        </div>
-      </div>
+  <div class="card bg-base-100 shadow">
+    <div class="card-body">
+      <form method="post" action="/rules/save" class="space-y-4">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <label class="form-control">
+            <div class="label"><span class="label-text">规则 ID</span></div>
+            <input type="text" name="id" value="{{.Rule.ID}}" placeholder="例如：ruleA" autocomplete="off" class="input input-bordered">
+          </label>
 
-      <div id="srcRemoteFields">
-        <div class="layui-form-item">
-        <label class="layui-form-label">源端</label>
-        <div class="layui-input-block">
-          <input type="text" name="src_remote" value="{{.Rule.SrcRemote}}" list="remoteList" autocomplete="off" class="layui-input" placeholder="例如：src">
-        </div>
-        </div>
-        <div class="layui-form-item">
-        <label class="layui-form-label">src_path</label>
-        <div class="layui-input-block">
-          <input type="text" name="src_path" value="{{.Rule.SrcPath}}" placeholder="/Source/A" autocomplete="off" class="layui-input">
-          <div class="muted" style="margin-top:6px">源端目录（相对于 src_remote 的根），建议以 <code>/</code> 开头。</div>
-        </div>
-        </div>
-      </div>
+          <label class="form-control">
+            <div class="label"><span class="label-text">源类型</span></div>
+            <select name="src_kind" id="srcKind" class="select select-bordered">
+              <option value="remote" {{if eq .Rule.SrcKind "remote"}}selected{{end}}>remote（远端）</option>
+              <option value="local" {{if eq .Rule.SrcKind "local"}}selected{{end}}>local（本地目录）</option>
+            </select>
+          </label>
 
-      <div id="srcLocalFields">
-        <div class="layui-form-item">
-          <label class="layui-form-label">本地目录</label>
-          <div class="layui-input-block">
-            <input type="text" name="src_local_root" value="{{.Rule.SrcLocalRoot}}" placeholder="例如：D:\\data\\watch 或 /data/watch" autocomplete="off" class="layui-input">
-            <div class="muted" style="margin-top:6px">扫描/传输时以该目录作为源根目录；会把文件的相对路径写入 <code>--files-from</code>。</div>
+          <label class="form-control">
+            <div class="label"><span class="label-text">启用</span></div>
+            <div class="flex items-center gap-3">
+              <input type="hidden" name="enabled" value="0">
+              <input type="checkbox" name="enabled" value="1" class="toggle toggle-success" {{if .Rule.Enabled}}checked{{end}}>
+              <span class="text-sm opacity-70">启用后会按扫描策略自动运行</span>
+            </div>
+          </label>
+
+          <label class="form-control">
+            <div class="label"><span class="label-text">模式</span></div>
+            <select name="transfer_mode" class="select select-bordered">
+              <option value="copy" {{if eq .Rule.TransferMode "copy"}}selected{{end}}>copy（不删除源端）</option>
+              <option value="move" {{if eq .Rule.TransferMode "move"}}selected{{end}}>move（成功后删除源端）</option>
+            </select>
+          </label>
+        </div>
+
+        <div id="srcRemoteFields" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <label class="form-control">
+            <div class="label"><span class="label-text">源端 remote</span></div>
+            <input type="text" name="src_remote" value="{{.Rule.SrcRemote}}" list="remoteList" autocomplete="off" class="input input-bordered" placeholder="例如：src">
+          </label>
+          <label class="form-control">
+            <div class="label"><span class="label-text">src_path</span></div>
+            <input type="text" name="src_path" value="{{.Rule.SrcPath}}" placeholder="/Source/A" autocomplete="off" class="input input-bordered">
+            <div class="label"><span class="label-text-alt opacity-70">源端目录（相对于 src_remote 的根）。</span></div>
+          </label>
+        </div>
+
+        <div id="srcLocalFields" class="space-y-2" style="display:none">
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <label class="form-control">
+              <div class="label"><span class="label-text">本地目录</span></div>
+              <input type="text" name="src_local_root" value="{{.Rule.SrcLocalRoot}}" placeholder="例如：D:\\data\\watch 或 /data/watch" autocomplete="off" class="input input-bordered">
+              <div class="label"><span class="label-text-alt opacity-70">扫描/传输时以该目录作为源根目录。</span></div>
+            </label>
+            <label class="form-control">
+              <div class="label"><span class="label-text">本地监控</span></div>
+              <div class="flex items-center gap-3">
+                <input type="hidden" name="local_watch_enabled" value="0">
+                <input type="checkbox" name="local_watch_enabled" value="1" class="toggle toggle-success" {{if .Rule.LocalWatch}}checked{{end}}>
+                <span class="text-sm opacity-70">监听变更触发快速扫描（仍会按扫描间隔兜底）</span>
+              </div>
+            </label>
           </div>
         </div>
-        <div class="layui-form-item">
-          <label class="layui-form-label">本地监控</label>
-          <div class="layui-input-block">
-            <input type="checkbox" name="local_watch_enabled" value="1" lay-skin="switch" lay-text="开|关" {{if .Rule.LocalWatch}}checked{{end}}>
-            <div class="muted" style="margin-top:6px">开启后监听本地目录变化（触发一次快速扫描）；仍会按“扫描间隔”兜底扫描。</div>
-          </div>
-        </div>
-      </div>
 
-      <div class="layui-form-item">
-        <label class="layui-form-label">目标端</label>
-        <div class="layui-input-block">
-          <input type="text" name="dst_remote" value="{{.Rule.DstRemote}}" list="remoteList" autocomplete="off" class="layui-input" placeholder="例如：dst">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <label class="form-control">
+            <div class="label"><span class="label-text">目标端 remote</span></div>
+            <input type="text" name="dst_remote" value="{{.Rule.DstRemote}}" list="remoteList" autocomplete="off" class="input input-bordered" placeholder="例如：dst">
+          </label>
+          <label class="form-control">
+            <div class="label"><span class="label-text">dst_path</span></div>
+            <input type="text" name="dst_path" value="{{.Rule.DstPath}}" placeholder="/Backup/A" autocomplete="off" class="input input-bordered">
+          </label>
         </div>
-      </div>
 
-      <datalist id="remoteList">
-        {{range .Remotes}}<option value="{{.}}"></option>{{end}}
-      </datalist>
-      <div class="layui-form-item">
-        <label class="layui-form-label">dst_path</label>
-        <div class="layui-input-block">
-          <input type="text" name="dst_path" value="{{.Rule.DstPath}}" placeholder="/Backup/A" autocomplete="off" class="layui-input">
-          <div class="muted" style="margin-top:6px">目标端目录（相对于 dst_remote 的根）。</div>
-        </div>
-      </div>
+        <datalist id="remoteList">
+          {{range .Remotes}}<option value="{{.}}"></option>{{end}}
+        </datalist>
 
-      <div class="layui-form-item">
-        <label class="layui-form-label">限速</label>
-        <div class="layui-input-block">
-          <input type="text" name="bwlimit" value="{{.Rule.Bwlimit}}" class="layui-input" placeholder="例如：8M / 1.5M / 0 / 留空">
-          <div class="muted" style="margin-top:6px">对应 rclone 的 <code>--bwlimit</code>（如 <code>8M</code>、<code>1.5M</code>）。留空：使用系统设置的默认限速；填写：仅对本规则生效。</div>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <label class="form-control">
+            <div class="label"><span class="label-text">限速</span></div>
+            <input type="text" name="bwlimit" value="{{.Rule.Bwlimit}}" class="input input-bordered" placeholder="例如：8M / 1.5M / 0 / 留空">
+            <div class="label"><span class="label-text-alt opacity-70">对应 rclone 的 <code>--bwlimit</code>；留空使用系统默认。</span></div>
+          </label>
+
+          <label class="form-control">
+            <div class="label"><span class="label-text">最小文件</span></div>
+            <input type="text" name="min_file_size" value="{{if gt .Rule.MinFileSizeBytes 0}}{{.Rule.MinFileSizeBytes}}{{end}}" class="input input-bordered" placeholder="例如：10M / 1.5G / 0 / 留空">
+            <div class="label"><span class="label-text-alt opacity-70">小于该大小的文件不会传输；当前：{{if gt .Rule.MinFileSizeBytes 0}}<code>{{humanBytes .Rule.MinFileSizeBytes}}</code>{{else}}不限制{{end}}</span></div>
+          </label>
+
+          <label class="form-control">
+            <div class="label"><span class="label-text">并发</span></div>
+            <input type="number" name="max_parallel_jobs" value="{{.Rule.MaxParallelJobs}}" class="input input-bordered">
+            <div class="label"><span class="label-text-alt opacity-70">本规则同时运行的任务数（与“系统设置-总并发”共同生效）。</span></div>
+          </label>
         </div>
-      </div>
-      <div class="layui-form-item">
-        <label class="layui-form-label">最小文件</label>
-        <div class="layui-input-block">
-          <input type="text" name="min_file_size" value="{{if gt .Rule.MinFileSizeBytes 0}}{{.Rule.MinFileSizeBytes}}{{end}}" class="layui-input" placeholder="例如：10M / 1.5G / 0 / 留空">
-          <div class="muted" style="margin-top:6px">小于该大小的文件将不会传输（会在扫描/入队/传输三处过滤）。支持 <code>10M</code>、<code>1.5G</code>、<code>1024</code>（字节）。当前：{{if gt .Rule.MinFileSizeBytes 0}}<code>{{humanBytes .Rule.MinFileSizeBytes}}</code>{{else}}不限制{{end}}</div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <label class="form-control">
+            <div class="label"><span class="label-text">扫描间隔（秒）</span></div>
+            <input type="number" name="scan_interval_sec" value="{{.Rule.ScanIntervalSec}}" class="input input-bordered">
+          </label>
+          <label class="form-control">
+            <div class="label"><span class="label-text">稳定秒数</span></div>
+            <input type="number" name="stable_seconds" value="{{.Rule.StableSeconds}}" class="input input-bordered">
+          </label>
+          <label class="form-control">
+            <div class="label"><span class="label-text">批大小</span></div>
+            <input type="number" name="batch_size" value="{{.Rule.BatchSize}}" class="input input-bordered">
+          </label>
         </div>
-      </div>
-      <div class="layui-form-item">
-        <label class="layui-form-label">并发</label>
-        <div class="layui-input-block">
-          <input type="number" name="max_parallel_jobs" value="{{.Rule.MaxParallelJobs}}" class="layui-input">
-          <div class="muted" style="margin-top:6px">本规则同时运行的任务数（与“系统设置-总并发”共同生效）。</div>
+
+        <div class="flex gap-2">
+          <button class="btn btn-primary" type="submit">保存</button>
+          <a class="btn btn-outline" href="/rules">返回</a>
         </div>
-      </div>
-      <div class="layui-form-item">
-        <label class="layui-form-label">扫描间隔</label>
-        <div class="layui-input-block">
-          <input type="number" name="scan_interval_sec" value="{{.Rule.ScanIntervalSec}}" class="layui-input">
-          <div class="muted" style="margin-top:6px">每隔多少秒扫描一次源端目录（rclone lsjson）。</div>
-        </div>
-      </div>
-      <div class="layui-form-item">
-        <label class="layui-form-label">稳定秒数</label>
-        <div class="layui-input-block">
-          <input type="number" name="stable_seconds" value="{{.Rule.StableSeconds}}" class="layui-input">
-          <div class="muted" style="margin-top:6px">文件满足“足够稳定”才会入队：若 now - modTime &gt; stable_seconds，或连续两次扫描 size+modTime 不变。</div>
-        </div>
-      </div>
-      <div class="layui-form-item">
-        <label class="layui-form-label">批大小</label>
-        <div class="layui-input-block">
-          <input type="number" name="batch_size" value="{{.Rule.BatchSize}}" class="layui-input">
-          <div class="muted" style="margin-top:6px">单个任务一次选取多少个文件进行传输（写入 files-from）。</div>
-        </div>
-      </div>
-      <div class="layui-form-item">
-        <div class="layui-input-block">
-          <button class="layui-btn" type="submit">保存</button>
-          <a class="layui-btn layui-btn-primary" href="/rules">返回</a>
-        </div>
-      </div>
-    </form>
+      </form>
+    </div>
   </div>
 </div>
 
 <script>
-  layui.use(['form'], function(){
-    const form = layui.form;
-    function applySrcKind(kind) {
-      const isLocal = kind === "local";
-      document.getElementById("srcRemoteFields").style.display = isLocal ? "none" : "";
-      document.getElementById("srcLocalFields").style.display = isLocal ? "" : "none";
-    }
-    applySrcKind("{{.Rule.SrcKind}}");
-    form.on('select(srcKind)', function(data){
-      applySrcKind(data.value);
-    });
-  });
+  function applySrcKind(kind) {
+    const isLocal = kind === "local";
+    const a = document.getElementById("srcRemoteFields");
+    const b = document.getElementById("srcLocalFields");
+    if (a) a.style.display = isLocal ? "none" : "";
+    if (b) b.style.display = isLocal ? "" : "none";
+  }
+  const srcKind = document.getElementById("srcKind");
+  if (srcKind) {
+    applySrcKind(srcKind.value || "remote");
+    srcKind.addEventListener("change", (e) => applySrcKind(e.target.value));
+  }
 </script>
 {{end}}
+

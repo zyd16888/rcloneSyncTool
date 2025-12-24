@@ -1,25 +1,32 @@
 {{define "content"}}
-<div class="page-title">远程列表</div>
-<div class="page-subtitle">从 rclone 配置文件读取 remote 名称（用于规则选择）</div>
+<div class="space-y-4">
+  <div>
+    <h1 class="text-xl font-bold">远程列表</h1>
+    <div class="text-sm opacity-70">从 rclone 配置文件读取 remote 名称（用于规则选择）</div>
+  </div>
 
-{{if .Error}}
-<div class="layui-elem-quote layui-quote-nm" style="border-left-color:#FFB800">
-  <b>读取失败：</b>{{.Error}}
-</div>
-{{end}}
-
-<div class="layui-card">
-  <div class="layui-card-body">
-    <table class="layui-table" lay-skin="line">
-  <tr>
-    <th>名称</th>
-  </tr>
-  {{range .Remotes}}
-  <tr>
-    <td>{{.}}</td>
-  </tr>
+  {{if .Error}}
+  <div class="alert alert-warning">
+    <span><b>读取失败：</b>{{.Error}}</span>
+  </div>
   {{end}}
-    </table>
+
+  <div class="card bg-base-100 shadow">
+    <div class="card-body">
+      <div class="overflow-x-auto">
+        <table class="table table-zebra">
+          <thead>
+            <tr><th>名称</th></tr>
+          </thead>
+          <tbody>
+            {{range .Remotes}}
+            <tr><td>{{.}}</td></tr>
+            {{end}}
+          </tbody>
+        </table>
+      </div>
+    </div>
   </div>
 </div>
 {{end}}
+

@@ -26,5 +26,7 @@
 .vscode/
 .DS_Store
 
+node_modules/
+
 AGENTS.md
 Design & Implementation Guide.md
