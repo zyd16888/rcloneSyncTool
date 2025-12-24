@@ -136,10 +136,19 @@
   layui.use(['form'], function(){
     const form = layui.form;
     form.render();
-    form.on('select(pageSize)', function(){
-      const f = document.querySelector('form[action="/jobs"]');
+    form.on('select(pageSize)', function(data){
+      const f = data.elem ? data.elem.closest('form') : null;
       if (f) f.submit();
     });
   });
+
+  // Fallback (in case Layui select event doesn't fire)
+  document.addEventListener('change', (e) => {
+    const t = e.target;
+    if (!t || t.tagName !== 'SELECT') return;
+    if (t.name !== 'page_size') return;
+    const f = t.closest('form');
+    if (f) f.submit();
+  }, true);
 </script>
 {{end}}
