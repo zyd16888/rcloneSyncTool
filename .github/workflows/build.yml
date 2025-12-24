@@ -44,7 +44,7 @@ jobs:
           CGO_ENABLED: "0"
         run: |
           set -euo pipefail
-          name="115togd"
+          name="rclone-syncd"
           ext=""
           if [ "${GOOS}" = "windows" ]; then ext=".exe"; fi
           outdir="dist/${GOOS}-${GOARCH}"
@@ -53,13 +53,14 @@ jobs:
           cp -f AGENTS.md "${outdir}/" || true
           cp -f "Design & Implementation Guide.md" "${outdir}/" || true
           cp -f LICENSE "${outdir}/" || true
+          cp -f README.md "${outdir}/" || true
 
       - name: Package
         shell: bash
         run: |
           set -euo pipefail
           outdir="dist/${{ matrix.goos }}-${{ matrix.goarch }}"
-          base="115togd_${{ matrix.goos }}_${{ matrix.goarch }}"
+          base="rclone-syncd_${{ matrix.goos }}_${{ matrix.goarch }}"
           if [ "${{ matrix.goos }}" = "windows" ]; then
             (cd "${outdir}" && zip -r "../${base}.zip" .)
           else
@@ -69,9 +70,9 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: 115togd_${{ matrix.goos }}_${{ matrix.goarch }}
+          name: rclone-syncd_${{ matrix.goos }}_${{ matrix.goarch }}
           path: |
-            dist/115togd_${{ matrix.goos }}_${{ matrix.goarch }}.*
+            dist/rclone-syncd_${{ matrix.goos }}_${{ matrix.goarch }}.*
 
   release:
     if: startsWith(github.ref, 'refs/tags/')
