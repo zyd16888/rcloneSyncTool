@@ -24,6 +24,7 @@ type ruleWorker struct {
 
 	pm *PortManager
 	gl *GlobalLimiter
+	jr *JobRegistry
 
 	sem chan struct{}
 
@@ -32,12 +33,13 @@ type ruleWorker struct {
 	stopped atomic.Bool
 }
 
-func newRuleWorker(st *store.Store, rule store.Rule, pm *PortManager, gl *GlobalLimiter) *ruleWorker {
+func newRuleWorker(st *store.Store, rule store.Rule, pm *PortManager, gl *GlobalLimiter, jr *JobRegistry) *ruleWorker {
 	return &ruleWorker{
 		st:     st,
 		rule:   rule,
 		pm:     pm,
 		gl:     gl,
+		jr:     jr,
 		scanCh: make(chan struct{}, 1),
 		stopCh: make(chan struct{}),
 		sem:    make(chan struct{}, rule.MaxParallelJobs),
@@ -110,14 +112,14 @@ func (w *ruleWorker) doScan(ctx context.Context) {
 		log.Printf("rule %s: upsert scan: %v", w.rule.ID, err)
 		return
 	}
-	if _, err := w.st.EnqueueStable(ctx, w.rule.ID, w.rule.BatchSize); err != nil {
+	if _, err := w.st.EnqueueStable(ctx, w.rule.ID, w.rule.BatchSize, w.rule.MinFileSizeBytes); err != nil {
 		log.Printf("rule %s: enqueue stable: %v", w.rule.ID, err)
 	}
 }
 
 func (w *ruleWorker) doSchedule(ctx context.Context) {
 	// keep queue warm
-	if _, err := w.st.EnqueueStable(ctx, w.rule.ID, w.rule.BatchSize); err != nil {
+	if _, err := w.st.EnqueueStable(ctx, w.rule.ID, w.rule.BatchSize, w.rule.MinFileSizeBytes); err != nil {
 		log.Printf("rule %s: enqueue stable: %v", w.rule.ID, err)
 	}
 	for {
@@ -198,6 +200,11 @@ func (w *ruleWorker) startOneJob(ctx context.Context) {
 
 	res := w.runWithMetrics(jobCtx, settings, port, filesFrom, logPath, jobID)
 	if res.Err != nil {
+		if errors.Is(res.Err, errTerminatedByUser) {
+			_ = w.st.UpdateJobTerminated(ctx, jobID, "terminated by user", res.BytesDone, res.AvgSpeed)
+			_ = w.st.ReleaseTransferringBackToQueued(ctx, jobID)
+			return
+		}
 		_ = w.st.UpdateJobFailed(ctx, jobID, res.Err.Error(), res.BytesDone, res.AvgSpeed)
 		_ = w.st.MarkJobFiles(ctx, jobID, "failed", res.Err.Error())
 		_ = w.st.ReleaseTransferringBackToQueued(ctx, jobID)
@@ -284,6 +291,8 @@ type jobResult struct {
 	Err       error
 }
 
+var errTerminatedByUser = errors.New("terminated by user")
+
 func (w *ruleWorker) runWithMetrics(ctx context.Context, settings store.RuntimeSettings, port int, filesFromPath, logPath, jobID string) jobResult {
 	var src string
 	if w.rule.SrcKind == "local" {
@@ -322,6 +331,9 @@ func (w *ruleWorker) runWithMetrics(ctx context.Context, settings store.RuntimeS
 	if effectiveBwlimit != "" {
 		args = append(args, "--bwlimit", effectiveBwlimit)
 	}
+	if w.rule.MinFileSizeBytes > 0 {
+		args = append(args, "--min-size", fmt.Sprintf("%d", w.rule.MinFileSizeBytes))
+	}
 
 	_ = os.MkdirAll(filepath.Dir(logPath), 0o755)
 	cmd := exec.CommandContext(ctx, "rclone", args...)
@@ -331,6 +343,11 @@ func (w *ruleWorker) runWithMetrics(ctx context.Context, settings store.RuntimeS
 
 	if err := cmd.Start(); err != nil {
 		return jobResult{Err: err}
+	}
+	var h *JobHandle
+	if w.jr != nil {
+		h = w.jr.Register(jobID, cmd)
+		defer w.jr.Unregister(jobID)
 	}
 
 	start := time.Now()
@@ -356,8 +373,14 @@ func (w *ruleWorker) runWithMetrics(ctx context.Context, settings store.RuntimeS
 		case <-ctx.Done():
 			_ = cmd.Process.Kill()
 			_ = <-done
+			if h != nil && h.Terminated() {
+				return jobResult{BytesDone: last.Bytes, AvgSpeed: avgSpeed(last.Bytes, start), Err: errTerminatedByUser}
+			}
 			return jobResult{BytesDone: last.Bytes, AvgSpeed: avgSpeed(last.Bytes, start), Err: ctx.Err()}
 		case err := <-done:
+			if h != nil && h.Terminated() {
+				return jobResult{BytesDone: last.Bytes, AvgSpeed: avgSpeed(last.Bytes, start), Err: errTerminatedByUser}
+			}
 			if err != nil {
 				// keep log in log file; minimal error message here
 				var exitErr *exec.ExitError

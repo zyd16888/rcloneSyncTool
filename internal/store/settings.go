@@ -47,6 +47,7 @@ ON CONFLICT(key) DO UPDATE SET
 type RuntimeSettings struct {
 	RcloneConfigPath string
 	LogDir           string
+	LogRetentionDays int
 	RcPortStart      int
 	RcPortEnd        int
 	GlobalMaxJobs    int
@@ -71,6 +72,7 @@ func (s *Store) RuntimeSettings(ctx context.Context) (RuntimeSettings, error) {
 	return RuntimeSettings{
 		RcloneConfigPath: m["rclone_config_path"],
 		LogDir:           m["log_dir"],
+		LogRetentionDays: parseIntDefault(m["log_retention_days"], 7),
 		RcPortStart:      parseIntDefault(m["rc_port_start"], 55720),
 		RcPortEnd:        parseIntDefault(m["rc_port_end"], 55800),
 		GlobalMaxJobs:    parseIntDefault(m["global_max_jobs"], 0),

@@ -106,6 +106,13 @@
         </div>
       </div>
       <div class="layui-form-item">
+        <label class="layui-form-label">最小文件</label>
+        <div class="layui-input-block">
+          <input type="text" name="min_file_size" value="{{if gt .Rule.MinFileSizeBytes 0}}{{.Rule.MinFileSizeBytes}}{{end}}" class="layui-input" placeholder="例如：10M / 1.5G / 0 / 留空">
+          <div class="muted" style="margin-top:6px">小于该大小的文件将不会传输（会在扫描/入队/传输三处过滤）。支持 <code>10M</code>、<code>1.5G</code>、<code>1024</code>（字节）。当前：{{if gt .Rule.MinFileSizeBytes 0}}<code>{{humanBytes .Rule.MinFileSizeBytes}}</code>{{else}}不限制{{end}}</div>
+        </div>
+      </div>
+      <div class="layui-form-item">
         <label class="layui-form-label">并发</label>
         <div class="layui-input-block">
           <input type="number" name="max_parallel_jobs" value="{{.Rule.MaxParallelJobs}}" class="layui-input">

@@ -200,6 +200,9 @@ func runRcloneJob(ctx context.Context, rule store.Rule, settings store.RuntimeSe
 	if effectiveBwlimit != "" {
 		args = append(args, "--bwlimit", effectiveBwlimit)
 	}
+	if rule.MinFileSizeBytes > 0 {
+		args = append(args, "--min-size", fmt.Sprintf("%d", rule.MinFileSizeBytes))
+	}
 
 	_ = os.MkdirAll(filepath.Dir(logPath), 0o755)
 

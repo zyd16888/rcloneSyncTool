@@ -63,6 +63,7 @@ type Rule struct {
 	DstPath         string
 	TransferMode    string
 	Bwlimit         string
+	MinFileSizeBytes int64
 	MaxParallelJobs int
 	ScanIntervalSec int
 	StableSeconds   int
@@ -94,6 +95,9 @@ func (r *Rule) Normalize() error {
 		return fmt.Errorf("invalid transfer_mode: %q", r.TransferMode)
 	}
 	r.Bwlimit = strings.TrimSpace(r.Bwlimit)
+	if r.MinFileSizeBytes < 0 {
+		r.MinFileSizeBytes = 0
+	}
 	if r.ID == "" {
 		return errors.New("rule id required")
 	}

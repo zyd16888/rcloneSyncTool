@@ -29,7 +29,7 @@
         {{.Rule.SrcRemote}}:{{.Rule.SrcPath}} → {{.Rule.DstRemote}}:{{.Rule.DstPath}}
       {{end}}
     </td>
-    <td class="muted">间隔={{.Rule.ScanIntervalSec}}s 稳定={{.Rule.StableSeconds}}s 批={{.Rule.BatchSize}} 并发={{.Rule.MaxParallelJobs}}{{if eq .Rule.SrcKind "local"}} 监控={{if .Rule.LocalWatch}}开{{else}}关{{end}}{{end}}{{if .Rule.Bwlimit}} 限速={{.Rule.Bwlimit}}{{end}}</td>
+    <td class="muted">间隔={{.Rule.ScanIntervalSec}}s 稳定={{.Rule.StableSeconds}}s 批={{.Rule.BatchSize}} 并发={{.Rule.MaxParallelJobs}}{{if eq .Rule.SrcKind "local"}} 监控={{if .Rule.LocalWatch}}开{{else}}关{{end}}{{end}}{{if .Rule.Bwlimit}} 限速={{.Rule.Bwlimit}}{{end}}{{if gt .Rule.MinFileSizeBytes 0}} 最小={{humanBytes .Rule.MinFileSizeBytes}}{{end}}</td>
     <td class="muted">新={{.Counts.New}} 稳定={{.Counts.Stable}} 排队={{.Counts.Queued}} 传输中={{.Counts.Transferring}} 完成={{.Counts.Done}} 失败={{.Counts.Failed}}</td>
     <td>
       <form class="inline" method="post" action="/rules/scan">

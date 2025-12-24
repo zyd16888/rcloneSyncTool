@@ -17,6 +17,7 @@ type Supervisor struct {
 
 	globalLimiter *GlobalLimiter
 	portManager   *PortManager
+	jobs          *JobRegistry
 }
 
 func NewSupervisor(st *store.Store) *Supervisor {
@@ -25,6 +26,7 @@ func NewSupervisor(st *store.Store) *Supervisor {
 		workers:       map[string]*ruleWorker{},
 		globalLimiter: NewGlobalLimiter(0),
 		portManager:   NewPortManager(55720, 55800),
+		jobs:          NewJobRegistry(),
 	}
 }
 
@@ -98,7 +100,7 @@ func (s *Supervisor) reconcile(ctx context.Context) {
 		if _, ok := s.workers[id]; ok {
 			continue
 		}
-		w := newRuleWorker(s.st, r, s.portManager, s.globalLimiter)
+		w := newRuleWorker(s.st, r, s.portManager, s.globalLimiter, s.jobs)
 		s.workers[id] = w
 		go w.run(ctx)
 	}
@@ -115,6 +117,7 @@ func ruleSame(a, b store.Rule) bool {
 		a.DstPath == b.DstPath &&
 		a.TransferMode == b.TransferMode &&
 		a.Bwlimit == b.Bwlimit &&
+		a.MinFileSizeBytes == b.MinFileSizeBytes &&
 		a.MaxParallelJobs == b.MaxParallelJobs &&
 		a.ScanIntervalSec == b.ScanIntervalSec &&
 		a.StableSeconds == b.StableSeconds &&
@@ -131,4 +134,11 @@ func (s *Supervisor) TriggerScan(ruleID string) bool {
 	}
 	w.triggerScan()
 	return true
+}
+
+func (s *Supervisor) TerminateJob(jobID string) bool {
+	if s.jobs == nil {
+		return false
+	}
+	return s.jobs.Terminate(jobID)
 }

@@ -20,6 +20,13 @@
         </div>
       </div>
       <div class="layui-form-item">
+        <label class="layui-form-label">日志保留</label>
+        <div class="layui-input-block">
+          <input type="number" name="log_retention_days" value="{{index .S "log_retention_days"}}" class="layui-input" placeholder="默认 7；0 不清理">
+          <div class="muted" style="margin-top:6px">自动清理多少天前的任务日志/临时目录。默认 7；0 表示不清理。</div>
+        </div>
+      </div>
+      <div class="layui-form-item">
         <label class="layui-form-label">RC 起始</label>
         <div class="layui-input-block">
           <input type="number" name="rc_port_start" value="{{index .S "rc_port_start"}}" class="layui-input">

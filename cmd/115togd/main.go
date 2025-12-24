@@ -56,6 +56,7 @@ func main() {
 	setDefaults := store.DefaultSettings{
 		RcloneConfigPath: "",
 		LogDir:           logDir,
+		LogRetentionDays: 7,
 		RcPortStart:      55720,
 		RcPortEnd:        55800,
 		GlobalMaxJobs:    0,
@@ -80,6 +81,7 @@ func main() {
 
 	supervisor := daemon.NewSupervisor(st)
 	go supervisor.Run(ctx)
+	go daemon.StartLogJanitor(ctx, st)
 
 	handler := server.New(st, supervisor, logDir, appLogPath)
 

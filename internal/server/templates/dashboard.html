@@ -78,7 +78,7 @@
     <td>{{.Job.RuleID}}</td>
     <td>{{.Job.TransferMode}}</td>
     <td>
-      <span class="layui-badge {{if eq .Job.Status "running"}}layui-bg-green{{else if eq .Job.Status "failed"}}layui-bg-red{{else}}layui-bg-blue{{end}}">{{.Job.Status}}</span>
+      <span class="layui-badge {{if eq .Job.Status "running"}}layui-bg-green{{else if eq .Job.Status "failed"}}layui-bg-red{{else if eq .Job.Status "terminated"}}layui-bg-orange{{else}}layui-bg-blue{{end}}">{{.Job.Status}}</span>
     </td>
     <td class="muted">{{ts .Job.StartedAt}}</td>
     <td class="muted">{{if .HasM}}{{humanBytes .Metric.Bytes}}{{else}}{{humanBytes .Job.BytesDone}}{{end}}</td>

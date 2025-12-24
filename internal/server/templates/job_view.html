@@ -3,6 +3,13 @@
 <div class="page-subtitle">实时速率/流量来自该任务独占的 RC 端口</div>
 <div class="toolbar">
   <a class="layui-btn layui-btn-primary" href="/jobs">返回任务列表</a>
+  {{if eq .Job.Status "running"}}
+  <form class="inline" method="post" action="/jobs/terminate" onsubmit="return confirm('确定要终止该任务吗？');">
+    <input type="hidden" name="id" value="{{.Job.JobID}}">
+    <input type="hidden" name="next" value="/jobs/view?id={{.Job.JobID}}">
+    <button class="layui-btn layui-btn-danger" type="submit">终止任务</button>
+  </form>
+  {{end}}
 </div>
 
 <div class="layui-row layui-col-space15">
@@ -13,7 +20,7 @@
         <div style="margin-bottom:6px"><b>任务 ID：</b><span class="muted">{{.Job.JobID}}</span></div>
         <div style="margin-bottom:6px"><b>规则：</b><span class="muted">{{.Job.RuleID}}</span></div>
         <div style="margin-bottom:6px"><b>模式：</b><span class="muted">{{.Job.TransferMode}}</span></div>
-        <div style="margin-bottom:6px"><b>状态：</b><span class="layui-badge {{if eq .Job.Status "running"}}layui-bg-green{{else if eq .Job.Status "failed"}}layui-bg-red{{else}}layui-bg-blue{{end}}">{{.Job.Status}}</span></div>
+        <div style="margin-bottom:6px"><b>状态：</b><span class="layui-badge {{if eq .Job.Status "running"}}layui-bg-green{{else if eq .Job.Status "failed"}}layui-bg-red{{else if eq .Job.Status "terminated"}}layui-bg-orange{{else}}layui-bg-blue{{end}}">{{.Job.Status}}</span></div>
         <div style="margin-bottom:6px"><b>开始：</b><span class="muted">{{ts .Job.StartedAt}}</span></div>
         <div style="margin-bottom:6px"><b>结束：</b><span class="muted">{{ts .Job.EndedAt}}</span></div>
         <div style="margin-bottom:6px"><b>RC 端口：</b><span class="muted">{{.Job.RcPort}}</span></div>

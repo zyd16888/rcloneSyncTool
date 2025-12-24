@@ -26,6 +26,7 @@
               <option value="running" {{if eq .F.Status "running"}}selected{{end}}>running</option>
               <option value="done" {{if eq .F.Status "done"}}selected{{end}}>done</option>
               <option value="failed" {{if eq .F.Status "failed"}}selected{{end}}>failed</option>
+              <option value="terminated" {{if eq .F.Status "terminated"}}selected{{end}}>terminated</option>
             </select>
           </div>
         </div>
@@ -74,18 +75,30 @@
     <th>已传输</th>
     <th>速度</th>
     <th>错误</th>
+    <th>操作</th>
   </tr>
   {{range .Jobs}}
   <tr>
     <td><a href="/jobs/view?id={{.Job.JobID}}">{{.Job.JobID}}</a></td>
     <td>{{.Job.RuleID}}</td>
     <td>{{.Job.TransferMode}}</td>
-    <td><span class="layui-badge {{if eq .Job.Status "running"}}layui-bg-green{{else if eq .Job.Status "failed"}}layui-bg-red{{else}}layui-bg-blue{{end}}">{{.Job.Status}}</span></td>
+    <td><span class="layui-badge {{if eq .Job.Status "running"}}layui-bg-green{{else if eq .Job.Status "failed"}}layui-bg-red{{else if eq .Job.Status "terminated"}}layui-bg-orange{{else}}layui-bg-blue{{end}}">{{.Job.Status}}</span></td>
     <td class="muted">{{ts .Job.StartedAt}}</td>
     <td class="muted">{{ts .Job.EndedAt}}</td>
     <td class="muted">{{if .HasM}}{{humanBytes .Metric.Bytes}}{{else}}{{humanBytes .Job.BytesDone}}{{end}}</td>
     <td class="muted">{{if .HasM}}{{printf "%.1f" .Metric.Speed}} B/s{{else}}{{printf "%.1f" .Job.AvgSpeed}} B/s{{end}}</td>
     <td class="muted">{{.Job.Error}}</td>
+    <td>
+      {{if eq .Job.Status "running"}}
+        <form class="inline" method="post" action="/jobs/terminate" onsubmit="return confirm('确定要终止该任务吗？');">
+          <input type="hidden" name="id" value="{{.Job.JobID}}">
+          <input type="hidden" name="next" value="{{$.SelfURL}}">
+          <button class="layui-btn layui-btn-danger layui-btn-sm" type="submit">终止</button>
+        </form>
+      {{else}}
+        <span class="muted">-</span>
+      {{end}}
+    </td>
   </tr>
   {{end}}
     </table>

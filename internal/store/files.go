@@ -104,10 +104,19 @@ ON CONFLICT(rule_id, path) DO UPDATE SET
 			return err
 		}
 	}
+
+	if rule.MinFileSizeBytes > 0 {
+		if _, err := tx.ExecContext(ctx, `
+DELETE FROM files
+WHERE rule_id=? AND size < ? AND state IN ('new','stable','queued','failed')
+`, rule.ID, rule.MinFileSizeBytes); err != nil {
+			return err
+		}
+	}
 	return tx.Commit()
 }
 
-func (s *Store) EnqueueStable(ctx context.Context, ruleID string, limit int) (int64, error) {
+func (s *Store) EnqueueStable(ctx context.Context, ruleID string, limit int, minSizeBytes int64) (int64, error) {
 	if limit <= 0 {
 		limit = 100
 	}
@@ -115,14 +124,14 @@ func (s *Store) EnqueueStable(ctx context.Context, ruleID string, limit int) (in
 WITH cte AS (
   SELECT rowid
   FROM files
-  WHERE rule_id=? AND state='stable'
+  WHERE rule_id=? AND state='stable' AND ( ?<=0 OR size>=? )
   ORDER BY last_seen DESC
   LIMIT ?
 )
 UPDATE files
 SET state='queued'
 WHERE rowid IN (SELECT rowid FROM cte)
-`, ruleID, limit)
+`, ruleID, minSizeBytes, minSizeBytes, limit)
 	if err != nil {
 		return 0, err
 	}
@@ -175,10 +184,10 @@ func (s *Store) ClaimQueuedForJob(ctx context.Context, rule Rule, jobID string, 
 	rows, err := tx.QueryContext(ctx, `
 SELECT path
 FROM files
-WHERE rule_id=? AND state='queued' AND (job_id IS NULL OR job_id='')
+WHERE rule_id=? AND state='queued' AND (job_id IS NULL OR job_id='') AND ( ?<=0 OR size>=? )
 ORDER BY last_seen DESC
 LIMIT ?
-`, rule.ID, limit)
+`, rule.ID, rule.MinFileSizeBytes, rule.MinFileSizeBytes, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -271,5 +280,14 @@ UPDATE jobs
 SET status='failed', ended_at=?, error=?, bytes_done=?, avg_speed=?
 WHERE job_id=?
 `, nowUnix(), errMsg, bytesDone, avgSpeed, jobID)
+	return err
+}
+
+func (s *Store) UpdateJobTerminated(ctx context.Context, jobID, reason string, bytesDone int64, avgSpeed float64) error {
+	_, err := s.db.ExecContext(ctx, `
+UPDATE jobs
+SET status='terminated', ended_at=?, error=?, bytes_done=?, avg_speed=?
+WHERE job_id=?
+`, nowUnix(), reason, bytesDone, avgSpeed, jobID)
 	return err
 }

@@ -92,6 +92,7 @@ func New(st *store.Store, supervisor *daemon.Supervisor, logDir string, appLogPa
 
 	r.GET("/jobs", s.jobsList)
 	r.GET("/jobs/view", s.jobView)
+	r.POST("/jobs/terminate", s.jobTerminatePost)
 	r.GET("/api/job", s.apiJob)
 	r.GET("/api/job/log/stream", s.apiJobLogStream)
 
@@ -248,6 +249,11 @@ func (s *Server) ruleEditGet(c *gin.Context) {
 
 func (s *Server) ruleSavePost(c *gin.Context) {
 	ctx := c.Request.Context()
+	minSize, err := parseSizeBytes(c.PostForm("min_file_size"))
+	if err != nil {
+		c.String(http.StatusBadRequest, "最小文件大小格式错误：%v（示例：10M / 1.5G / 0 / 留空）", err)
+		return
+	}
 	rule := store.Rule{
 		ID:              c.PostForm("id"),
 		SrcKind:         c.PostForm("src_kind"),
@@ -259,6 +265,7 @@ func (s *Server) ruleSavePost(c *gin.Context) {
 		DstPath:         c.PostForm("dst_path"),
 		TransferMode:    c.PostForm("transfer_mode"),
 		Bwlimit:         c.PostForm("bwlimit"),
+		MinFileSizeBytes: minSize,
 		MaxParallelJobs: atoiDefault(c.PostForm("max_parallel_jobs"), 1),
 		ScanIntervalSec: atoiDefault(c.PostForm("scan_interval_sec"), 15),
 		StableSeconds:   atoiDefault(c.PostForm("stable_seconds"), 60),
@@ -349,6 +356,7 @@ func (s *Server) jobsList(c *gin.Context) {
 		"Jobs": rows,
 		"Rules": rules,
 		"F": filter,
+		"SelfURL": c.Request.URL.RequestURI(),
 		"Page": page,
 		"PageSize": pageSize,
 		"Total": total,
@@ -372,7 +380,7 @@ func normalizePageSize(s string, def int) int {
 
 func normalizeJobStatus(s string) string {
 	switch strings.TrimSpace(strings.ToLower(s)) {
-	case "running", "done", "failed":
+	case "running", "done", "failed", "terminated":
 		return strings.TrimSpace(strings.ToLower(s))
 	default:
 		return ""
@@ -475,6 +483,7 @@ func (s *Server) settingsSavePost(c *gin.Context) {
 	ctx := c.Request.Context()
 	for _, key := range []string{
 		"rclone_config_path",
+		"log_retention_days",
 		"global_max_jobs",
 		"rc_port_start",
 		"rc_port_end",
@@ -497,6 +506,33 @@ func (s *Server) settingsSavePost(c *gin.Context) {
 		_ = s.st.SetSetting(ctx, key, v)
 	}
 	s.redirect(c, "/settings")
+}
+
+func (s *Server) jobTerminatePost(c *gin.Context) {
+	ctx := c.Request.Context()
+	id := strings.TrimSpace(c.PostForm("id"))
+	if id == "" {
+		c.String(http.StatusBadRequest, "missing job id")
+		return
+	}
+	job, ok, _ := s.st.GetJob(ctx, id)
+	if !ok {
+		c.Status(http.StatusNotFound)
+		return
+	}
+	if job.Status != "running" {
+		c.String(http.StatusConflict, "job is not running")
+		return
+	}
+	if !s.supervisor.TerminateJob(id) {
+		c.String(http.StatusConflict, "terminate failed: job not found in registry")
+		return
+	}
+	next := strings.TrimSpace(c.PostForm("next"))
+	if next == "" || !strings.HasPrefix(next, "/") {
+		next = "/jobs"
+	}
+	s.redirect(c, next)
 }
 
 func errString(err error) string {

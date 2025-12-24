@@ -62,6 +62,7 @@ CREATE TABLE IF NOT EXISTS rules (
   dst_path TEXT NOT NULL,
   transfer_mode TEXT NOT NULL DEFAULT 'copy',
   bwlimit TEXT NOT NULL DEFAULT '',
+  min_file_size_bytes INTEGER NOT NULL DEFAULT 0,
   max_parallel_jobs INTEGER NOT NULL DEFAULT 1,
   scan_interval_sec INTEGER NOT NULL DEFAULT 15,
   stable_seconds INTEGER NOT NULL DEFAULT 60,
@@ -141,6 +142,9 @@ CREATE TABLE IF NOT EXISTS settings (
 	if err := s.ensureRuleColumn(ctx, "bwlimit", "TEXT NOT NULL DEFAULT ''"); err != nil {
 		return err
 	}
+	if err := s.ensureRuleColumn(ctx, "min_file_size_bytes", "INTEGER NOT NULL DEFAULT 0"); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -175,6 +179,7 @@ func (s *Store) ensureRuleColumn(ctx context.Context, col, ddl string) error {
 type DefaultSettings struct {
 	RcloneConfigPath string
 	LogDir           string
+	LogRetentionDays int
 	RcPortStart      int
 	RcPortEnd        int
 	GlobalMaxJobs    int
@@ -201,6 +206,9 @@ ON CONFLICT(key) DO NOTHING
 		return err
 	}
 	if err := setIfMissing("log_dir", d.LogDir); err != nil {
+		return err
+	}
+	if err := setIfMissing("log_retention_days", fmt.Sprintf("%d", d.LogRetentionDays)); err != nil {
 		return err
 	}
 	if err := setIfMissing("rc_port_start", fmt.Sprintf("%d", d.RcPortStart)); err != nil {
