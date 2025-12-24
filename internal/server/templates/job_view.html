@@ -18,7 +18,7 @@
       <div class="layui-card-header">基础信息</div>
       <div class="layui-card-body">
         <div style="margin-bottom:6px"><b>任务 ID：</b><span class="muted">{{.Job.JobID}}</span></div>
-        <div style="margin-bottom:6px"><b>规则：</b><span class="muted">{{.Job.RuleID}}</span></div>
+        <div style="margin-bottom:6px"><b>规则：</b><span class="muted">{{if hasPrefix .Job.RuleID "manual_"}}手动运行{{else}}{{.Job.RuleID}}{{end}}</span></div>
         <div style="margin-bottom:6px"><b>模式：</b><span class="muted">{{.Job.TransferMode}}</span></div>
         <div style="margin-bottom:6px"><b>状态：</b><span class="layui-badge {{if eq .Job.Status "running"}}layui-bg-green{{else if eq .Job.Status "failed"}}layui-bg-red{{else if eq .Job.Status "terminated"}}layui-bg-orange{{else}}layui-bg-blue{{end}}">{{.Job.Status}}</span></div>
         <div style="margin-bottom:6px"><b>开始：</b><span class="muted">{{ts .Job.StartedAt}}</span></div>

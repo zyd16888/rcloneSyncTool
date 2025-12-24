@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"context"
+	"errors"
 	"log"
 	"sync"
 	"time"
@@ -18,6 +19,8 @@ type Supervisor struct {
 	globalLimiter *GlobalLimiter
 	portManager   *PortManager
 	jobs          *JobRegistry
+
+	rootCtx context.Context
 }
 
 func NewSupervisor(st *store.Store) *Supervisor {
@@ -31,6 +34,7 @@ func NewSupervisor(st *store.Store) *Supervisor {
 }
 
 func (s *Supervisor) Run(ctx context.Context) {
+	s.rootCtx = ctx
 	t := time.NewTicker(5 * time.Second)
 	defer t.Stop()
 
@@ -118,6 +122,7 @@ func ruleSame(a, b store.Rule) bool {
 		a.TransferMode == b.TransferMode &&
 		a.Bwlimit == b.Bwlimit &&
 		a.MinFileSizeBytes == b.MinFileSizeBytes &&
+		a.IsManual == b.IsManual &&
 		a.MaxParallelJobs == b.MaxParallelJobs &&
 		a.ScanIntervalSec == b.ScanIntervalSec &&
 		a.StableSeconds == b.StableSeconds &&
@@ -141,4 +146,47 @@ func (s *Supervisor) TerminateJob(jobID string) bool {
 		return false
 	}
 	return s.jobs.Terminate(jobID)
+}
+
+func (s *Supervisor) StartManualJob(rule store.Rule, jobID string, logPath string) {
+	ctx := s.rootCtx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	go s.runManualJob(ctx, rule, jobID, logPath)
+}
+
+func (s *Supervisor) runManualJob(ctx context.Context, rule store.Rule, jobID string, logPath string) {
+	settings, err := s.st.RuntimeSettings(ctx)
+	if err != nil {
+		_ = s.st.UpdateJobFailed(ctx, jobID, "load settings: "+err.Error(), 0, 0)
+		return
+	}
+	if s.globalLimiter != nil {
+		if ok := s.globalLimiter.Acquire(ctx); !ok {
+			_ = s.st.UpdateJobFailed(ctx, jobID, "acquire global limiter failed", 0, 0)
+			return
+		}
+		defer s.globalLimiter.Release()
+	}
+	port, err := s.portManager.Acquire()
+	if err != nil {
+		_ = s.st.UpdateJobFailed(ctx, jobID, "acquire rc port: "+err.Error(), 0, 0)
+		return
+	}
+	defer s.portManager.Release(port)
+
+	_ = s.st.UpdateJobRunning(ctx, jobID, port)
+
+	w := &ruleWorker{st: s.st, rule: rule, jr: s.jobs}
+	res := w.runWithMetrics(ctx, settings, port, "", logPath, jobID)
+	if res.Err != nil {
+		if errors.Is(res.Err, errTerminatedByUser) {
+			_ = s.st.UpdateJobTerminated(ctx, jobID, "terminated by user", res.BytesDone, res.AvgSpeed)
+			return
+		}
+		_ = s.st.UpdateJobFailed(ctx, jobID, res.Err.Error(), res.BytesDone, res.AvgSpeed)
+		return
+	}
+	_ = s.st.UpdateJobDone(ctx, jobID, res.BytesDone, res.AvgSpeed)
 }

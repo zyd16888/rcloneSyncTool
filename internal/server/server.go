@@ -8,6 +8,8 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"path"
 	"fmt"
 	"strconv"
@@ -53,6 +55,7 @@ func New(st *store.Store, supervisor *daemon.Supervisor, logDir string, appLogPa
 			}
 			return t.Format("2006-01-02 15:04:05")
 		},
+		"hasPrefix": strings.HasPrefix,
 		"humanBytes": humanBytes,
 	}
 	s.pages = map[string]*template.Template{}
@@ -89,6 +92,9 @@ func New(st *store.Store, supervisor *daemon.Supervisor, logDir string, appLogPa
 	r.POST("/rules/toggle", s.ruleTogglePost)
 	r.POST("/rules/scan", s.ruleScanPost)
 	r.POST("/rules/retry_failed", s.ruleRetryFailedPost)
+
+	r.GET("/manual", s.manualGet)
+	r.POST("/manual/start", s.manualStartPost)
 
 	r.GET("/jobs", s.jobsList)
 	r.GET("/jobs/view", s.jobView)
@@ -248,6 +254,78 @@ func (s *Server) ruleEditGet(c *gin.Context) {
 		"Remotes": remotes,
 		"Error":   errString(err),
 	})
+}
+
+func (s *Server) manualGet(c *gin.Context) {
+	ctx := c.Request.Context()
+	remotes, err := s.listRcloneRemotes(ctx)
+	s.render(c, "manual", map[string]any{
+		"Active":  "rules",
+		"Remotes": remotes,
+		"Error":   errString(err),
+	})
+}
+
+func (s *Server) manualStartPost(c *gin.Context) {
+	ctx := c.Request.Context()
+
+	minSize, err := parseSizeBytes(c.PostForm("min_file_size"))
+	if err != nil {
+		c.String(http.StatusBadRequest, "最小文件大小格式错误：%v（示例：10M / 1.5G / 0 / 留空）", err)
+		return
+	}
+
+	jobID := newID()
+	ruleID := "manual_" + jobID
+	rule := store.Rule{
+		ID:               ruleID,
+		SrcKind:          c.PostForm("src_kind"),
+		SrcRemote:        c.PostForm("src_remote"),
+		SrcPath:          c.PostForm("src_path"),
+		SrcLocalRoot:     c.PostForm("src_local_root"),
+		DstRemote:        c.PostForm("dst_remote"),
+		DstPath:          c.PostForm("dst_path"),
+		TransferMode:     c.PostForm("transfer_mode"),
+		Bwlimit:          c.PostForm("bwlimit"),
+		MinFileSizeBytes: minSize,
+		IsManual:         true,
+		Enabled:          false,
+		MaxParallelJobs:  1,
+		ScanIntervalSec:  15,
+		StableSeconds:    60,
+		BatchSize:        100,
+	}
+	if err := s.st.UpsertRule(ctx, rule); err != nil {
+		c.String(http.StatusBadRequest, err.Error())
+		return
+	}
+
+	settings, err := s.st.RuntimeSettings(ctx)
+	if err != nil {
+		c.String(http.StatusInternalServerError, "load settings: %v", err)
+		return
+	}
+	logPath := filepath.Join(settings.LogDir, rule.ID, jobID+".log")
+
+	j := store.Job{
+		JobID:        jobID,
+		RuleID:       rule.ID,
+		TransferMode: rule.TransferMode,
+		StartedAt:    time.Now(),
+		LogPath:      logPath,
+	}
+	if err := s.st.CreateJobRowPending(ctx, j); err != nil {
+		c.String(http.StatusInternalServerError, "create job: %v", err)
+		return
+	}
+
+	baseDir := filepath.Dir(settings.LogDir)
+	jobDir := filepath.Join(baseDir, "jobs", rule.ID, jobID)
+	_ = os.MkdirAll(jobDir, 0o755)
+	_ = os.MkdirAll(filepath.Dir(logPath), 0o755)
+
+	s.supervisor.StartManualJob(rule, jobID, logPath)
+	s.redirect(c, "/jobs/view?id="+jobID)
 }
 
 func (s *Server) ruleSavePost(c *gin.Context) {

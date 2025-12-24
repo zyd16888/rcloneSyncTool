@@ -63,6 +63,7 @@ CREATE TABLE IF NOT EXISTS rules (
   transfer_mode TEXT NOT NULL DEFAULT 'copy',
   bwlimit TEXT NOT NULL DEFAULT '',
   min_file_size_bytes INTEGER NOT NULL DEFAULT 0,
+  is_manual INTEGER NOT NULL DEFAULT 0,
   max_parallel_jobs INTEGER NOT NULL DEFAULT 1,
   scan_interval_sec INTEGER NOT NULL DEFAULT 15,
   stable_seconds INTEGER NOT NULL DEFAULT 60,
@@ -143,6 +144,9 @@ CREATE TABLE IF NOT EXISTS settings (
 		return err
 	}
 	if err := s.ensureRuleColumn(ctx, "min_file_size_bytes", "INTEGER NOT NULL DEFAULT 0"); err != nil {
+		return err
+	}
+	if err := s.ensureRuleColumn(ctx, "is_manual", "INTEGER NOT NULL DEFAULT 0"); err != nil {
 		return err
 	}
 	return nil

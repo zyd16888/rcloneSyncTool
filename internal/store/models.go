@@ -64,6 +64,7 @@ type Rule struct {
 	TransferMode    string
 	Bwlimit         string
 	MinFileSizeBytes int64
+	IsManual        bool
 	MaxParallelJobs int
 	ScanIntervalSec int
 	StableSeconds   int

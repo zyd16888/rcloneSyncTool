@@ -265,6 +265,23 @@ VALUES(?, ?, ?, ?, ?, 'running', ?)
 	return err
 }
 
+func (s *Store) CreateJobRowPending(ctx context.Context, j Job) error {
+	_, err := s.db.ExecContext(ctx, `
+INSERT INTO jobs(job_id, rule_id, transfer_mode, rc_port, started_at, status, log_path)
+VALUES(?, ?, ?, 0, ?, 'pending', ?)
+`, j.JobID, j.RuleID, j.TransferMode, j.StartedAt.Unix(), j.LogPath)
+	return err
+}
+
+func (s *Store) UpdateJobRunning(ctx context.Context, jobID string, rcPort int) error {
+	_, err := s.db.ExecContext(ctx, `
+UPDATE jobs
+SET status='running', rc_port=?, error=''
+WHERE job_id=? AND status='pending'
+`, rcPort, jobID)
+	return err
+}
+
 func (s *Store) UpdateJobDone(ctx context.Context, jobID string, bytesDone int64, avgSpeed float64) error {
 	_, err := s.db.ExecContext(ctx, `
 UPDATE jobs

@@ -111,7 +111,7 @@
   {{range .Jobs}}
   <tr>
     <td><a href="/jobs/view?id={{.Job.JobID}}">{{.Job.JobID}}</a></td>
-    <td>{{.Job.RuleID}}</td>
+    <td>{{if hasPrefix .Job.RuleID "manual_"}}手动运行{{else}}{{.Job.RuleID}}{{end}}</td>
     <td>{{.Job.TransferMode}}</td>
     <td>
       <span class="layui-badge {{if eq .Job.Status "running"}}layui-bg-green{{else if eq .Job.Status "failed"}}layui-bg-red{{else if eq .Job.Status "terminated"}}layui-bg-orange{{else}}layui-bg-blue{{end}}">{{.Job.Status}}</span>

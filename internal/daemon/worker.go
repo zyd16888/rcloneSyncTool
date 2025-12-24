@@ -305,7 +305,6 @@ func (w *ruleWorker) runWithMetrics(ctx context.Context, settings store.RuntimeS
 	args := []string{
 		w.rule.TransferMode,
 		src, dst,
-		"--files-from", filesFromPath,
 		"--stats", "0",
 		"--rc",
 		"--rc-no-auth",
@@ -317,6 +316,9 @@ func (w *ruleWorker) runWithMetrics(ctx context.Context, settings store.RuntimeS
 	}
 	if strings.TrimSpace(settings.RcloneConfigPath) != "" {
 		args = append(args, "--config", settings.RcloneConfigPath)
+	}
+	if strings.TrimSpace(filesFromPath) != "" {
+		args = append(args, "--files-from", filesFromPath)
 	}
 	if settings.BufferSize != "" {
 		args = append(args, "--buffer-size", settings.BufferSize)

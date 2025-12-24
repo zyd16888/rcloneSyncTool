@@ -1,0 +1,121 @@
+{{define "content"}}
+<div class="page-title">手动运行</div>
+<div class="page-subtitle">不创建同步队列，直接启动一次 rclone 任务（copy/move）；运行记录会出现在任务列表中</div>
+
+{{if .Error}}
+<div class="layui-elem-quote layui-quote-nm" style="border-left-color:#FFB800">
+  <b>提示：</b>{{.Error}}<br>
+  你仍可手动输入 remote 名称，但运行时 rclone 必须能解析到该 remote。
+</div>
+{{end}}
+
+<div class="layui-card">
+  <div class="layui-card-body">
+    <form class="layui-form" method="post" action="/manual/start">
+      <div class="layui-form-item">
+        <label class="layui-form-label">源类型</label>
+        <div class="layui-input-block">
+          <select name="src_kind" lay-filter="srcKind">
+            <option value="remote" selected>remote（远端）</option>
+            <option value="local">local（本地目录）</option>
+          </select>
+          <div class="muted" style="margin-top:6px">remote：<code>remote:path</code>；local：本机目录路径。</div>
+        </div>
+      </div>
+
+      <div class="layui-form-item">
+        <label class="layui-form-label">模式</label>
+        <div class="layui-input-block">
+          <select name="transfer_mode">
+            <option value="copy" selected>copy（不删除源端）</option>
+            <option value="move">move（成功后删除源端）</option>
+          </select>
+        </div>
+      </div>
+
+      <div id="srcRemoteFields">
+        <div class="layui-form-item">
+          <label class="layui-form-label">源端</label>
+          <div class="layui-input-block">
+            <input type="text" name="src_remote" list="remoteList" autocomplete="off" class="layui-input" placeholder="例如：src">
+          </div>
+        </div>
+        <div class="layui-form-item">
+          <label class="layui-form-label">src_path</label>
+          <div class="layui-input-block">
+            <input type="text" name="src_path" placeholder="/Source/A" autocomplete="off" class="layui-input">
+            <div class="muted" style="margin-top:6px">源端目录（相对于 src_remote 的根）。</div>
+          </div>
+        </div>
+      </div>
+
+      <div id="srcLocalFields" style="display:none">
+        <div class="layui-form-item">
+          <label class="layui-form-label">本地目录</label>
+          <div class="layui-input-block">
+            <input type="text" name="src_local_root" placeholder="例如：D:\\data\\watch 或 /data/watch" autocomplete="off" class="layui-input">
+          </div>
+        </div>
+      </div>
+
+      <div class="layui-form-item">
+        <label class="layui-form-label">目标端</label>
+        <div class="layui-input-block">
+          <input type="text" name="dst_remote" list="remoteList" autocomplete="off" class="layui-input" placeholder="例如：dst">
+        </div>
+      </div>
+
+      <datalist id="remoteList">
+        {{range .Remotes}}<option value="{{.}}"></option>{{end}}
+      </datalist>
+
+      <div class="layui-form-item">
+        <label class="layui-form-label">dst_path</label>
+        <div class="layui-input-block">
+          <input type="text" name="dst_path" placeholder="/Backup/A" autocomplete="off" class="layui-input">
+        </div>
+      </div>
+
+      <div class="layui-form-item">
+        <label class="layui-form-label">限速</label>
+        <div class="layui-input-block">
+          <input type="text" name="bwlimit" class="layui-input" placeholder="例如：8M / 1.5M / 0 / 留空">
+          <div class="muted" style="margin-top:6px">对应 rclone 的 <code>--bwlimit</code>。留空：使用系统设置默认；填写：仅对本次运行生效。</div>
+        </div>
+      </div>
+
+      <div class="layui-form-item">
+        <label class="layui-form-label">最小文件</label>
+        <div class="layui-input-block">
+          <input type="text" name="min_file_size" class="layui-input" placeholder="例如：10M / 1.5G / 0 / 留空">
+          <div class="muted" style="margin-top:6px">小于该大小的文件将不会传输（等同 rclone <code>--min-size</code>）。</div>
+        </div>
+      </div>
+
+      <div class="layui-form-item">
+        <div class="layui-input-block">
+          <button class="layui-btn" type="submit">立即运行</button>
+          <a class="layui-btn layui-btn-primary" href="/rules">返回</a>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+  layui.use(['form'], function(){
+    const form = layui.form;
+    form.render();
+    function applySrcKind(kind) {
+      const isLocal = kind === "local";
+      document.getElementById("srcRemoteFields").style.display = isLocal ? "none" : "";
+      document.getElementById("srcLocalFields").style.display = isLocal ? "" : "none";
+    }
+    applySrcKind("remote");
+    form.on('select(srcKind)', function(data){
+      applySrcKind(data.value);
+    });
+  });
+</script>
+{{end}}
+
