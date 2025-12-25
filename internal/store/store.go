@@ -61,6 +61,7 @@ CREATE TABLE IF NOT EXISTS rules (
   dst_remote TEXT NOT NULL,
   dst_path TEXT NOT NULL,
   transfer_mode TEXT NOT NULL DEFAULT 'copy',
+  rclone_extra_args TEXT NOT NULL DEFAULT '',
   bwlimit TEXT NOT NULL DEFAULT '',
   min_file_size_bytes INTEGER NOT NULL DEFAULT 0,
   is_manual INTEGER NOT NULL DEFAULT 0,
@@ -138,6 +139,9 @@ CREATE TABLE IF NOT EXISTS settings (
 		return err
 	}
 	if err := s.ensureRuleColumn(ctx, "local_watch_enabled", "INTEGER NOT NULL DEFAULT 1"); err != nil {
+		return err
+	}
+	if err := s.ensureRuleColumn(ctx, "rclone_extra_args", "TEXT NOT NULL DEFAULT ''"); err != nil {
 		return err
 	}
 	if err := s.ensureRuleColumn(ctx, "bwlimit", "TEXT NOT NULL DEFAULT ''"); err != nil {

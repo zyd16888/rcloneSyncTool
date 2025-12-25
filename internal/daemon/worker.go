@@ -381,6 +381,14 @@ func (w *ruleWorker) runWithMetrics(ctx context.Context, settings store.RuntimeS
 	if w.rule.MinFileSizeBytes > 0 {
 		args = append(args, "--min-size", fmt.Sprintf("%d", w.rule.MinFileSizeBytes))
 	}
+	if strings.TrimSpace(w.rule.RcloneExtraArgs) != "" {
+		parsed, err := ParseRcloneArgs(w.rule.RcloneExtraArgs)
+		if err != nil {
+			return jobResult{Err: err}
+		}
+		san := SanitizeRcloneArgs(parsed)
+		args = append(args, san.Args...)
+	}
 
 	_ = os.MkdirAll(filepath.Dir(logPath), 0o755)
 	cmd := exec.CommandContext(ctx, "rclone", args...)

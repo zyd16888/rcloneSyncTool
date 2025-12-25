@@ -10,7 +10,7 @@ import (
 func (s *Store) ListRules(ctx context.Context) ([]Rule, error) {
 	rows, err := s.db.QueryContext(ctx, `
 SELECT id, src_kind, src_remote, src_path, src_local_root, local_watch_enabled,
-       dst_remote, dst_path, transfer_mode, bwlimit,
+       dst_remote, dst_path, transfer_mode, rclone_extra_args, bwlimit,
        min_file_size_bytes, is_manual,
        max_parallel_jobs, scan_interval_sec, stable_seconds, batch_size, enabled,
        created_at, updated_at
@@ -31,7 +31,7 @@ ORDER BY id
 		var created, updated int64
 		if err := rows.Scan(
 			&r.ID, &r.SrcKind, &r.SrcRemote, &r.SrcPath, &r.SrcLocalRoot, &watch,
-			&r.DstRemote, &r.DstPath, &r.TransferMode, &r.Bwlimit,
+			&r.DstRemote, &r.DstPath, &r.TransferMode, &r.RcloneExtraArgs, &r.Bwlimit,
 			&r.MinFileSizeBytes, &isManual,
 			&r.MaxParallelJobs, &r.ScanIntervalSec, &r.StableSeconds, &r.BatchSize, &enabled,
 			&created, &updated,
@@ -56,7 +56,7 @@ func (s *Store) GetRule(ctx context.Context, id string) (Rule, bool, error) {
 	var created, updated int64
 	err := s.db.QueryRowContext(ctx, `
 SELECT id, src_kind, src_remote, src_path, src_local_root, local_watch_enabled,
-       dst_remote, dst_path, transfer_mode, bwlimit,
+       dst_remote, dst_path, transfer_mode, rclone_extra_args, bwlimit,
        min_file_size_bytes, is_manual,
        max_parallel_jobs, scan_interval_sec, stable_seconds, batch_size, enabled,
        created_at, updated_at
@@ -64,7 +64,7 @@ FROM rules
 WHERE id=?
 `, id).Scan(
 		&r.ID, &r.SrcKind, &r.SrcRemote, &r.SrcPath, &r.SrcLocalRoot, &watch,
-		&r.DstRemote, &r.DstPath, &r.TransferMode, &r.Bwlimit,
+		&r.DstRemote, &r.DstPath, &r.TransferMode, &r.RcloneExtraArgs, &r.Bwlimit,
 		&r.MinFileSizeBytes, &isManual,
 		&r.MaxParallelJobs, &r.ScanIntervalSec, &r.StableSeconds, &r.BatchSize, &enabled,
 		&created, &updated,
@@ -91,12 +91,12 @@ func (s *Store) UpsertRule(ctx context.Context, r Rule) error {
 	_, err := s.db.ExecContext(ctx, `
 INSERT INTO rules(
   id, src_kind, src_remote, src_path, src_local_root, local_watch_enabled,
-  dst_remote, dst_path, transfer_mode, bwlimit,
+  dst_remote, dst_path, transfer_mode, rclone_extra_args, bwlimit,
   min_file_size_bytes, is_manual,
   max_parallel_jobs, scan_interval_sec, stable_seconds, batch_size, enabled,
   created_at, updated_at
 )
-VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(id) DO UPDATE SET
   src_kind=excluded.src_kind,
   src_remote=excluded.src_remote,
@@ -106,6 +106,7 @@ ON CONFLICT(id) DO UPDATE SET
   dst_remote=excluded.dst_remote,
   dst_path=excluded.dst_path,
   transfer_mode=excluded.transfer_mode,
+  rclone_extra_args=excluded.rclone_extra_args,
   bwlimit=excluded.bwlimit,
   min_file_size_bytes=excluded.min_file_size_bytes,
   is_manual=excluded.is_manual,
@@ -116,7 +117,7 @@ ON CONFLICT(id) DO UPDATE SET
   enabled=excluded.enabled,
   updated_at=excluded.updated_at
 `, r.ID, r.SrcKind, r.SrcRemote, r.SrcPath, r.SrcLocalRoot, boolToInt(r.LocalWatch),
-		r.DstRemote, r.DstPath, r.TransferMode, r.Bwlimit,
+		r.DstRemote, r.DstPath, r.TransferMode, r.RcloneExtraArgs, r.Bwlimit,
 		r.MinFileSizeBytes, boolToInt(r.IsManual),
 		r.MaxParallelJobs, r.ScanIntervalSec, r.StableSeconds, r.BatchSize, boolToInt(r.Enabled),
 		now, now,

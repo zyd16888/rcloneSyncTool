@@ -62,6 +62,7 @@ type Rule struct {
 	DstRemote       string
 	DstPath         string
 	TransferMode    string
+	RcloneExtraArgs string
 	Bwlimit         string
 	MinFileSizeBytes int64
 	IsManual        bool
@@ -89,6 +90,7 @@ func (r *Rule) Normalize() error {
 	r.DstPath = cleanRemotePath(r.DstPath)
 	r.SrcLocalRoot = strings.TrimSpace(r.SrcLocalRoot)
 	r.TransferMode = strings.TrimSpace(strings.ToLower(r.TransferMode))
+	r.RcloneExtraArgs = strings.TrimSpace(r.RcloneExtraArgs)
 	if r.TransferMode == "" {
 		r.TransferMode = "copy"
 	}

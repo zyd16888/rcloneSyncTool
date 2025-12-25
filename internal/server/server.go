@@ -288,6 +288,13 @@ func (s *Server) manualStartPost(c *gin.Context) {
 		return
 	}
 
+	if strings.TrimSpace(c.PostForm("rclone_extra_args")) != "" {
+		if _, err := daemon.ParseRcloneArgs(c.PostForm("rclone_extra_args")); err != nil {
+			c.String(http.StatusBadRequest, err.Error())
+			return
+		}
+	}
+
 	jobID := newID()
 	ruleID := "manual_" + jobID
 	rule := store.Rule{
@@ -299,6 +306,7 @@ func (s *Server) manualStartPost(c *gin.Context) {
 		DstRemote:        c.PostForm("dst_remote"),
 		DstPath:          c.PostForm("dst_path"),
 		TransferMode:     c.PostForm("transfer_mode"),
+		RcloneExtraArgs:  c.PostForm("rclone_extra_args"),
 		Bwlimit:          c.PostForm("bwlimit"),
 		MinFileSizeBytes: minSize,
 		IsManual:         true,
@@ -348,6 +356,12 @@ func (s *Server) ruleSavePost(c *gin.Context) {
 		c.String(http.StatusBadRequest, "最小文件大小格式错误：%v（示例：10M / 1.5G / 0 / 留空）", err)
 		return
 	}
+	if strings.TrimSpace(c.PostForm("rclone_extra_args")) != "" {
+		if _, err := daemon.ParseRcloneArgs(c.PostForm("rclone_extra_args")); err != nil {
+			c.String(http.StatusBadRequest, err.Error())
+			return
+		}
+	}
 	rule := store.Rule{
 		ID:              c.PostForm("id"),
 		SrcKind:         c.PostForm("src_kind"),
@@ -358,6 +372,7 @@ func (s *Server) ruleSavePost(c *gin.Context) {
 		DstRemote:       c.PostForm("dst_remote"),
 		DstPath:         c.PostForm("dst_path"),
 		TransferMode:    c.PostForm("transfer_mode"),
+		RcloneExtraArgs: c.PostForm("rclone_extra_args"),
 		Bwlimit:         c.PostForm("bwlimit"),
 		MinFileSizeBytes: minSize,
 		MaxParallelJobs: atoiDefault(c.PostForm("max_parallel_jobs"), 1),

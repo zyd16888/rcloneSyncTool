@@ -203,6 +203,14 @@ func runRcloneJob(ctx context.Context, rule store.Rule, settings store.RuntimeSe
 	if rule.MinFileSizeBytes > 0 {
 		args = append(args, "--min-size", fmt.Sprintf("%d", rule.MinFileSizeBytes))
 	}
+	if strings.TrimSpace(rule.RcloneExtraArgs) != "" {
+		parsed, err := ParseRcloneArgs(rule.RcloneExtraArgs)
+		if err != nil {
+			return rcloneRunResult{Err: err}
+		}
+		san := SanitizeRcloneArgs(parsed)
+		args = append(args, san.Args...)
+	}
 
 	_ = os.MkdirAll(filepath.Dir(logPath), 0o755)
 
