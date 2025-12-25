@@ -10,15 +10,23 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
 	"115togd/internal/daemon"
 	"115togd/internal/server"
 	"115togd/internal/store"
+
+	"golang.org/x/crypto/bcrypt"
 )
 
 func main() {
+	if len(os.Args) >= 2 && os.Args[1] == "passwd" {
+		runPasswd(os.Args[2:])
+		return
+	}
+
 	var (
 		listenAddr = flag.String("listen", "127.0.0.1:8080", "HTTP listen address")
 		dataDir    = flag.String("data", "./data", "Data directory")
@@ -111,4 +119,56 @@ func main() {
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer shutdownCancel()
 	_ = srv.Shutdown(shutdownCtx)
+}
+
+func runPasswd(args []string) {
+	fs := flag.NewFlagSet("passwd", flag.ExitOnError)
+	dataDir := fs.String("data", "./data", "Data directory")
+	fromStdin := fs.Bool("stdin", false, "Read password from stdin (recommended to avoid shell history)")
+	_ = fs.Parse(args)
+
+	var password string
+	if *fromStdin {
+		b, err := io.ReadAll(os.Stdin)
+		if err != nil {
+			_, _ = os.Stderr.WriteString("read stdin: " + err.Error() + "\n")
+			os.Exit(2)
+		}
+		password = strings.TrimSpace(strings.ReplaceAll(string(b), "\r\n", "\n"))
+	} else {
+		rest := fs.Args()
+		if len(rest) != 1 {
+			_, _ = os.Stderr.WriteString("Usage: rclone_sync passwd [-data DIR] [-stdin] <password>\n")
+			os.Exit(2)
+		}
+		password = rest[0]
+	}
+	if strings.TrimSpace(password) == "" {
+		_, _ = os.Stderr.WriteString("password is empty\n")
+		os.Exit(2)
+	}
+
+	dbPath := filepath.Join(*dataDir, "115togd.db")
+	st, err := store.Open(dbPath)
+	if err != nil {
+		_, _ = os.Stderr.WriteString("open db: " + err.Error() + "\n")
+		os.Exit(1)
+	}
+	defer st.Close()
+
+	if err := st.Migrate(context.Background()); err != nil {
+		_, _ = os.Stderr.WriteString("migrate: " + err.Error() + "\n")
+		os.Exit(1)
+	}
+
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		_, _ = os.Stderr.WriteString("hash password: " + err.Error() + "\n")
+		os.Exit(1)
+	}
+	if err := st.SetSetting(context.Background(), "ui_password_hash", string(hash)); err != nil {
+		_, _ = os.Stderr.WriteString("save password: " + err.Error() + "\n")
+		os.Exit(1)
+	}
+	_, _ = os.Stdout.WriteString("OK: password updated\n")
 }

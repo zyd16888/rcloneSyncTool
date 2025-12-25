@@ -14,6 +14,18 @@
           <div class="label"><span class="label-text-alt opacity-70">当前：{{.RcloneConfigPathDisplay}}</span></div>
         </label>
 
+        <div class="divider">鉴权</div>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <label class="form-control">
+            <div class="label"><span class="label-text">管理台新密码（留空不修改）</span></div>
+            <input type="password" name="ui_password" class="input input-bordered" autocomplete="new-password" placeholder="留空表示不修改">
+          </label>
+          <label class="form-control">
+            <div class="label"><span class="label-text">确认新密码</span></div>
+            <input type="password" name="ui_password2" class="input input-bordered" autocomplete="new-password" placeholder="再次输入新密码">
+          </label>
+        </div>
+
         <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
           <label class="form-control">
             <div class="label"><span class="label-text">总并发</span></div>

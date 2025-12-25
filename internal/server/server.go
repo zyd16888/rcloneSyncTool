@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"golang.org/x/crypto/bcrypt"
 
 	"115togd/internal/daemon"
 	"115togd/internal/store"
@@ -80,6 +81,12 @@ func New(st *store.Store, supervisor *daemon.Supervisor, logDir string, appLogPa
 		c.Writer.Header().Set("Cache-Control", "no-store")
 		c.Next()
 	})
+
+	r.GET("/login", s.loginGet)
+	r.POST("/login", s.loginPost)
+	r.POST("/logout", s.logoutPost)
+
+	r.Use(s.authMiddleware())
 
 	r.GET("/", s.dashboard)
 
@@ -627,6 +634,24 @@ func (s *Server) settingsGet(c *gin.Context) {
 
 func (s *Server) settingsSavePost(c *gin.Context) {
 	ctx := c.Request.Context()
+	passwordChanged := false
+	if p := strings.TrimSpace(c.PostForm("ui_password")); p != "" {
+		if p != strings.TrimSpace(c.PostForm("ui_password2")) {
+			c.String(http.StatusBadRequest, "两次输入的密码不一致")
+			return
+		}
+		hash, err := bcrypt.GenerateFromPassword([]byte(p), bcrypt.DefaultCost)
+		if err != nil {
+			c.String(http.StatusInternalServerError, "密码加密失败：%v", err)
+			return
+		}
+		if err := s.st.SetSetting(ctx, authPasswordHashKey, string(hash)); err != nil {
+			c.String(http.StatusInternalServerError, "保存密码失败：%v", err)
+			return
+		}
+		passwordChanged = true
+	}
+
 	for _, key := range []string{
 		"rclone_config_path",
 		"log_retention_days",
@@ -650,6 +675,11 @@ func (s *Server) settingsSavePost(c *gin.Context) {
 			continue
 		}
 		_ = s.st.SetSetting(ctx, key, v)
+	}
+	if passwordChanged {
+		clearAuthCookie(c)
+		s.redirect(c, "/login?next=%2Fsettings")
+		return
 	}
 	s.redirect(c, "/settings")
 }

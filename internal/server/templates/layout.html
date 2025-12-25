@@ -63,6 +63,11 @@
             <li><a class="{{if eq .Active "jobs"}}bg-slate-700 text-white{{else}}text-slate-200 hover:bg-slate-700 hover:text-white{{end}}" href="/jobs">任务列表</a></li>
             <li><a class="{{if eq .Active "logs"}}bg-slate-700 text-white{{else}}text-slate-200 hover:bg-slate-700 hover:text-white{{end}}" href="/logs">日志</a></li>
             <li><a class="{{if eq .Active "settings"}}bg-slate-700 text-white{{else}}text-slate-200 hover:bg-slate-700 hover:text-white{{end}}" href="/settings">系统设置</a></li>
+            <li>
+              <form method="post" action="/logout">
+                <button class="text-slate-200 hover:bg-slate-700 hover:text-white w-full text-left px-4 py-2 rounded" type="submit">退出登录</button>
+              </form>
+            </li>
           </ul>
           <div class="p-4 text-xs text-slate-200/80">
             本地 Web 管理台（默认仅监听 127.0.0.1）。<br>

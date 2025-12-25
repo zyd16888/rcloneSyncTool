@@ -24,6 +24,20 @@
 
 浏览器打开：`http://127.0.0.1:8080`
 
+## 忘记密码（重置）
+
+用命令行直接重置管理台密码（会写入 `data/115togd.db`，并让现有登录 cookie 失效）：
+
+```bash
+./rclone-syncd passwd -data ./data "新密码"
+```
+
+推荐避免出现在 shell history（从 stdin 读）：
+
+```bash
+echo "新密码" | ./rclone-syncd passwd -data ./data -stdin
+```
+
 可选参数：
 
 - `-listen`：Web 监听地址（例如 `127.0.0.1:8080` 或 `0.0.0.0:8080`）
