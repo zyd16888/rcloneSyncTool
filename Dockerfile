@@ -22,6 +22,8 @@ FROM rclone/rclone:latest AS runtime-official
 COPY --from=build /out/rclone-syncd /usr/local/bin/rclone-syncd
 COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
+ENV LANG=C.UTF-8
+ENV LC_ALL=C.UTF-8
 ENV RCLONE_CONFIG=/data/rclone.conf
 VOLUME ["/data"]
 EXPOSE 8080
@@ -31,6 +33,9 @@ FROM debian:bookworm-slim AS runtime-115
 RUN apt-get update && apt-get install -y --no-install-recommends \
   ca-certificates curl bash tar gzip unzip \
   && rm -rf /var/lib/apt/lists/*
+# Enable UTF-8 locale for better Chinese filename display in shell/tools.
+ENV LANG=C.UTF-8
+ENV LC_ALL=C.UTF-8
 # Install wiserain rclone (includes 115 support). In container build we are already root, no sudo needed.
 RUN curl -fsSL https://raw.githubusercontent.com/wiserain/rclone/mod/install.sh | bash
 COPY --from=build /out/rclone-syncd /usr/local/bin/rclone-syncd

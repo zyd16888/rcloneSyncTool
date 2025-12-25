@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -17,18 +16,6 @@ import (
 )
 
 const maxDirSuggestions = 200
-
-func isLoopbackRequest(r *http.Request) bool {
-	host := r.RemoteAddr
-	if h, _, err := net.SplitHostPort(host); err == nil {
-		host = h
-	}
-	ip := net.ParseIP(host)
-	if ip == nil {
-		return false
-	}
-	return ip.IsLoopback()
-}
 
 func hasTrailingSlash(p string) bool {
 	if p == "" {
@@ -89,11 +76,6 @@ func capSuggestions(in []string) (out []string, truncated bool) {
 }
 
 func (s *Server) apiFSList(c *gin.Context) {
-	if !isLoopbackRequest(c.Request) {
-		c.Status(http.StatusForbidden)
-		return
-	}
-
 	raw := strings.TrimSpace(c.Query("path"))
 	if raw == "" {
 		c.JSON(http.StatusOK, map[string]any{
@@ -153,11 +135,6 @@ func (s *Server) apiFSList(c *gin.Context) {
 }
 
 func (s *Server) apiRcloneDirs(c *gin.Context) {
-	if !isLoopbackRequest(c.Request) {
-		c.Status(http.StatusForbidden)
-		return
-	}
-
 	ctx := c.Request.Context()
 	remote := strings.TrimSpace(c.Query("remote"))
 	inPath := strings.TrimSpace(c.Query("path"))
@@ -246,4 +223,3 @@ func (s *Server) rcloneCmdOutput(ctx context.Context, args ...string) ([]byte, e
 	}
 	return out, nil
 }
-
