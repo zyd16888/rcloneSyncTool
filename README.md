@@ -11,6 +11,8 @@
 - 实时监控：任务列表、速度/流量、任务详情实时日志
 - 外部 rclone 配置：直接复用你现有的 `rclone.conf`（只依赖 remote 名称）
 
+---
+
 ## 快速开始
 
 ### 方式 A：本地运行（二进制）
@@ -127,13 +129,13 @@ echo "新密码" | docker run --rm -i -v "$(pwd)/data:/data" ghcr.io/zyd16888/rc
 
 把截图放到 `docs/screenshots/`，然后替换下面这些占位图：
 
-![登录/初始化密码](docs/screenshots/login.png)
+![登录/初始化密码](https://github.com/user-attachments/assets/25384944-9f60-4378-a6a7-27dc6a6d7a1a)
 
-![rclone 配置编辑](docs/screenshots/rclone_config.png)
+![rclone 配置编辑](https://github.com/user-attachments/assets/ff1f296b-ed74-41a0-963c-8dd5231d6675)
 
-![同步规则](docs/screenshots/rules.png)
+![同步规则](https://github.com/user-attachments/assets/e3d2eeff-9201-4777-8576-7c3729957bfb)
 
-![任务列表](docs/screenshots/jobs.png)
+![任务列表](https://github.com/user-attachments/assets/e0937da2-1bb4-4337-a004-0db762b86036)
 
 ## 打包发布（GitHub Actions）
 
