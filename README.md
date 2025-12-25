@@ -121,11 +121,11 @@ echo "新密码" | docker run --rm -i -v "$(pwd)/data:/data" ghcr.io/zyd16888/rc
 
 ![登录/初始化密码](https://github.com/user-attachments/assets/25384944-9f60-4378-a6a7-27dc6a6d7a1a)
 
-![rclone 配置编辑](docs/screenshots/rclone_config.png)
+![rclone 配置编辑](https://github.com/user-attachments/assets/ff1f296b-ed74-41a0-963c-8dd5231d6675)
 
-![同步规则](docs/screenshots/rules.png)
+![同步规则](https://github.com/user-attachments/assets/e3d2eeff-9201-4777-8576-7c3729957bfb)
 
-![任务列表](docs/screenshots/jobs.png)
+![任务列表](https://github.com/user-attachments/assets/e0937da2-1bb4-4337-a004-0db762b86036)
 
 ## 打包发布（GitHub Actions）
 
