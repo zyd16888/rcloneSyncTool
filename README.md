@@ -11,6 +11,12 @@
 - 实时监控：任务列表、速度/流量、任务详情实时日志
 - 外部 rclone 配置：直接复用你现有的 `rclone.conf`（只依赖 remote 名称）
 
+<img width="1920" height="945" alt="image" src="https://github.com/user-attachments/assets/6b073f3c-79d4-4ed8-98bb-95bb8d5a2798" />
+
+<img width="1368" height="750" alt="image" src="https://github.com/user-attachments/assets/c9ee1ca8-2136-4392-82a6-39b29d80e918" />
+
+---
+
 ## 快速开始
 
 ### 方式 A：本地运行（二进制）
