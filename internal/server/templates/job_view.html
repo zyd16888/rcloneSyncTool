@@ -146,7 +146,7 @@
       hint.textContent = "当前无正在传输的文件（可能在 check/idle 或已接近完成）。";
       return;
     }
-    hint.textContent = "实时来源：rclone RC /core/transfers";
+    hint.textContent = "实时来源：rclone RC " + (d.source || "core/stats.transferring");
     body.innerHTML = list.map((t) => {
       const size = t.size || 0;
       const bytes = t.bytes || 0;
@@ -178,4 +178,3 @@
   es.onerror = () => { /* keep trying */ };
 </script>
 {{end}}
-

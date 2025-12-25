@@ -618,7 +618,7 @@ func (s *Server) apiJobTransfers(c *gin.Context) {
 		})
 		return
 	}
-	transfers, err := fetchRcloneTransfers(ctx, job.RcPort)
+	transfers, source, err := fetchRcloneTransfers(ctx, job.RcPort)
 	c.Writer.Header().Set("Content-Type", "application/json; charset=utf-8")
 	if err != nil {
 		_ = json.NewEncoder(c.Writer).Encode(map[string]any{
@@ -632,6 +632,7 @@ func (s *Server) apiJobTransfers(c *gin.Context) {
 	_ = json.NewEncoder(c.Writer).Encode(map[string]any{
 		"jobID": job.JobID,
 		"running": true,
+		"source": source,
 		"transfers": transfers,
 	})
 }

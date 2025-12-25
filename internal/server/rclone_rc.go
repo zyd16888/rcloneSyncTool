@@ -1,7 +1,6 @@
 package server
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -18,29 +17,28 @@ type rcloneTransfer struct {
 	ETA   float64 `json:"eta"`
 }
 
-func fetchRcloneTransfers(ctx context.Context, port int) ([]rcloneTransfer, error) {
+func fetchRcloneTransfers(ctx context.Context, port int) ([]rcloneTransfer, string, error) {
 	client := &http.Client{Timeout: 2 * time.Second}
-	url := fmt.Sprintf("http://127.0.0.1:%d/core/transfers", port)
-	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader([]byte(`{}`)))
-	req.Header.Set("Content-Type", "application/json")
+	url := fmt.Sprintf("http://127.0.0.1:%d/core/stats", port)
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		b, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return nil, fmt.Errorf("rc status %d: %s", resp.StatusCode, string(bytes.TrimSpace(b)))
+		return nil, "", fmt.Errorf("rc status %d: %s", resp.StatusCode, string(b))
 	}
 
 	var raw struct {
-		Transfers []rcloneTransfer `json:"transfers"`
+		Transferring []rcloneTransfer `json:"transferring"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
-		return nil, err
+		return nil, "", err
 	}
-	if raw.Transfers == nil {
-		return []rcloneTransfer{}, nil
+	if raw.Transferring == nil {
+		return []rcloneTransfer{}, "core/stats.transferring", nil
 	}
-	return raw.Transfers, nil
+	return raw.Transferring, "core/stats.transferring", nil
 }
