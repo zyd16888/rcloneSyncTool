@@ -1,7 +1,9 @@
 package server
 
 import (
+	"os"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 )
@@ -23,8 +25,12 @@ func (s *Server) apiRcloneCheck(c *gin.Context) {
 	rs, _ := s.st.RuntimeSettings(ctx)
 	resp["configPath"] = rs.RcloneConfigPath
 	resp["configPathDisplay"] = rs.RcloneConfigPath
-	if rs.RcloneConfigPath == "" {
-		resp["configPathDisplay"] = "（使用 rclone 默认配置路径）"
+	if strings.TrimSpace(rs.RcloneConfigPath) == "" {
+		if p := strings.TrimSpace(os.Getenv("RCLONE_CONFIG")); p != "" {
+			resp["configPathDisplay"] = p + "（来自 RCLONE_CONFIG）"
+		} else {
+			resp["configPathDisplay"] = "（使用 rclone 默认配置路径 / RCLONE_CONFIG 未设置）"
+		}
 	}
 
 	if v, err := s.rcloneVersion(ctx); err == nil {
@@ -42,4 +48,3 @@ func (s *Server) apiRcloneCheck(c *gin.Context) {
 
 	c.JSON(http.StatusOK, resp)
 }
-

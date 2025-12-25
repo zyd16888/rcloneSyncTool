@@ -1,0 +1,51 @@
+{{define "content"}}
+<div class="space-y-4">
+  <div class="flex flex-wrap gap-2 items-center justify-between">
+    <div>
+      <h1 class="text-xl font-bold">rclone 配置文件</h1>
+      <div class="text-sm opacity-70">编辑当前生效的 rclone.conf（不会自动创建新文件）</div>
+    </div>
+    <div class="flex gap-2">
+      <a class="btn btn-sm btn-ghost" href="/settings">系统设置</a>
+    </div>
+  </div>
+
+  {{if .Error}}
+  <div class="alert alert-error">
+    <span>{{.Error}}</span>
+  </div>
+  {{end}}
+
+  {{if .Path}}
+  <div class="alert">
+    <span>
+      <b>路径：</b><code>{{.Path}}</code>
+      <span class="opacity-70">（来源：{{.PathSource}}）</span>
+    </span>
+  </div>
+  {{end}}
+
+  {{if .ReadError}}
+  <div class="alert alert-warning">
+    <span><b>无法读取配置文件：</b>{{.ReadError}}<br>如果你在 Docker 中运行，请确保该文件已经在挂载卷里存在（例如先在宿主机创建）。</span>
+  </div>
+  {{end}}
+
+  <div class="card bg-base-100 border border-base-200">
+    <div class="card-body">
+      <form method="post" action="/rclone/config/save" class="space-y-3">
+        <label class="form-control">
+          <div class="label"><span class="label-text">内容</span></div>
+          <textarea name="content" class="textarea textarea-bordered font-mono text-xs h-96" placeholder="在这里粘贴/编辑 rclone.conf">{{.Content}}</textarea>
+          <div class="label"><span class="label-text-alt opacity-70">保存会直接覆盖现有文件（建议先自行备份）。</span></div>
+        </label>
+        <div class="flex gap-2">
+          <button class="btn btn-info text-info-content" type="submit">保存</button>
+          <a class="btn btn-ghost" href="/remotes">查看 remotes</a>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{{end}}
+

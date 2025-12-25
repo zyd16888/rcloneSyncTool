@@ -92,6 +92,9 @@ func New(st *store.Store, supervisor *daemon.Supervisor, logDir string, appLogPa
 
 	r.GET("/remotes", s.remotesList)
 
+	r.GET("/rclone/config", s.rcloneConfigGet)
+	r.POST("/rclone/config/save", s.rcloneConfigSavePost)
+
 	r.GET("/rules", s.rulesList)
 	r.GET("/rules/edit", s.ruleEditGet)
 	r.POST("/rules/save", s.ruleSavePost)

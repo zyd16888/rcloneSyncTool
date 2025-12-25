@@ -27,12 +27,18 @@ func (s *Server) injectBase(c *gin.Context, m map[string]any) {
 	rs, err := s.st.RuntimeSettings(c.Request.Context())
 	if err == nil {
 		m["RcloneConfigPath"] = rs.RcloneConfigPath
-		if strings.TrimSpace(rs.RcloneConfigPath) == "" {
-			m["RcloneConfigPathDisplay"] = "（使用 rclone 默认配置路径）"
+		configPath := strings.TrimSpace(rs.RcloneConfigPath)
+		if configPath == "" {
+			if p := strings.TrimSpace(os.Getenv("RCLONE_CONFIG")); p != "" {
+				configPath = p
+			}
+		}
+		if strings.TrimSpace(configPath) == "" {
+			m["RcloneConfigPathDisplay"] = "（使用 rclone 默认配置路径 / RCLONE_CONFIG 未设置）"
 			m["RcloneConfigMissing"] = false
 		} else {
-			m["RcloneConfigPathDisplay"] = rs.RcloneConfigPath
-			_, statErr := os.Stat(rs.RcloneConfigPath)
+			m["RcloneConfigPathDisplay"] = configPath
+			_, statErr := os.Stat(configPath)
 			m["RcloneConfigMissing"] = statErr != nil
 		}
 	}

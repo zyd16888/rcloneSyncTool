@@ -59,6 +59,7 @@
           <ul class="menu p-3 text-sm">
             <li><a class="{{if eq .Active "dashboard"}}bg-slate-700 text-white{{else}}text-slate-200 hover:bg-slate-700 hover:text-white{{end}}" href="/">概览</a></li>
             <li><a class="{{if eq .Active "remotes"}}bg-slate-700 text-white{{else}}text-slate-200 hover:bg-slate-700 hover:text-white{{end}}" href="/remotes">远程列表</a></li>
+            <li><a class="{{if eq .Active "rclone_config"}}bg-slate-700 text-white{{else}}text-slate-200 hover:bg-slate-700 hover:text-white{{end}}" href="/rclone/config">rclone 配置</a></li>
             <li><a class="{{if eq .Active "rules"}}bg-slate-700 text-white{{else}}text-slate-200 hover:bg-slate-700 hover:text-white{{end}}" href="/rules">同步规则</a></li>
             <li><a class="{{if eq .Active "jobs"}}bg-slate-700 text-white{{else}}text-slate-200 hover:bg-slate-700 hover:text-white{{end}}" href="/jobs">任务列表</a></li>
             <li><a class="{{if eq .Active "logs"}}bg-slate-700 text-white{{else}}text-slate-200 hover:bg-slate-700 hover:text-white{{end}}" href="/logs">日志</a></li>

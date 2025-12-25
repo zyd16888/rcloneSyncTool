@@ -1,0 +1,13 @@
+.git
+.github
+node_modules
+data
+docs
+*.db
+*.log
+*.tar.gz
+*.zip
+dist
+build
+tmp
+**/.DS_Store

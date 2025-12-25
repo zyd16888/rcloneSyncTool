@@ -24,6 +24,31 @@
 
 浏览器打开：`http://127.0.0.1:8080`
 
+## Docker
+
+镜像内自带 `rclone`，并默认使用 `RCLONE_CONFIG=/data/rclone.conf`（与数据库/日志同目录，方便持久化）。
+
+构建：
+
+```bash
+docker build -t rclone-syncd:latest .
+```
+
+运行（持久化到当前目录 `./data`）：
+
+```bash
+mkdir -p ./data
+touch ./data/rclone.conf
+docker run --rm -p 8080:8080 -v "$(pwd)/data:/data" rclone-syncd:latest
+```
+
+配置监听地址/端口（容器内默认 `0.0.0.0:8080`）：
+
+- 只改端口：`-e PORT=9090`（等价于 `-listen 0.0.0.0:9090`）
+- 完整指定：`-e LISTEN_ADDR=127.0.0.1:8080` 或 `-e RCLONE_SYNCD_LISTEN=0.0.0.0:8080`
+
+然后在页面「rclone 配置」里粘贴/编辑 `rclone.conf`，再到「远程列表」确认能列出 remotes。
+
 ## 忘记密码（重置）
 
 用命令行直接重置管理台密码（会写入 `data/115togd.db`，并让现有登录 cookie 失效）：
