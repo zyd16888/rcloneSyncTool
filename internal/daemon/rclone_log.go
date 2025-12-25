@@ -6,6 +6,27 @@ import (
 	"strings"
 )
 
+func logHadNothingToTransfer(logPath string) bool {
+	f, err := os.Open(logPath)
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+
+	sc := bufio.NewScanner(f)
+	buf := make([]byte, 0, 64*1024)
+	sc.Buffer(buf, 1024*1024)
+	for sc.Scan() {
+		line := sc.Text()
+		if strings.Contains(line, "There was nothing to transfer") ||
+			strings.Contains(line, "There was nothing to copy") ||
+			strings.Contains(line, "There was nothing to move") {
+			return true
+		}
+	}
+	return false
+}
+
 func parseTransferredPathLine(line string) (string, bool) {
 	markers := []string{": Copied", ": Moved", ": Skipped"}
 	idx := -1
@@ -56,4 +77,3 @@ func transferredPathsFromLog(logPath string) (map[string]struct{}, error) {
 	}
 	return done, nil
 }
-

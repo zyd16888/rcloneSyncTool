@@ -297,6 +297,14 @@ func (w *ruleWorker) startOneJob(scanCtx context.Context, jobCtx context.Context
 		}
 	}
 	if len(donePaths) != len(paths) {
+		// rclone may exit 0 with "There was nothing to transfer" (everything already exists at destination).
+		// In that case we should treat all claimed paths as finished to avoid endless re-queue loops.
+		if len(donePaths) == 0 && logHadNothingToTransfer(logPath) {
+			_ = w.st.UpdateJobDone(jobCtx, jobID, res.BytesDone, res.AvgSpeed)
+			_ = w.st.FinalizeJobFiles(jobCtx, jobID, paths, "queued", "")
+			_ = w.st.ClearJobOnDone(jobCtx, jobID)
+			return
+		}
 		_ = w.st.UpdateJobFailed(jobCtx, jobID, fmt.Sprintf("incomplete: %d/%d transferred", len(donePaths), len(paths)), res.BytesDone, res.AvgSpeed)
 		_ = w.st.FinalizeJobFiles(jobCtx, jobID, donePaths, "queued", "")
 		_ = w.st.ClearJobOnDone(jobCtx, jobID)
