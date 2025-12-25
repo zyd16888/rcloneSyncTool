@@ -103,6 +103,9 @@ func New(st *store.Store, supervisor *daemon.Supervisor, logDir string, appLogPa
 	r.GET("/api/job/log/stream", s.apiJobLogStream)
 	r.GET("/api/job/transfers", s.apiJobTransfers)
 
+	r.GET("/api/fs/list", s.apiFSList)
+	r.GET("/api/rclone/dirs", s.apiRcloneDirs)
+
 	r.GET("/api/stats/now", s.apiStatsNow)
 
 	r.GET("/logs", s.logsPage)

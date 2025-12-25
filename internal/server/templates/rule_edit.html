@@ -49,11 +49,11 @@
         <div id="srcRemoteFields" class="grid grid-cols-1 md:grid-cols-2 gap-4">
           <label class="form-control">
             <div class="label"><span class="label-text">源端 remote</span></div>
-            <input type="text" name="src_remote" value="{{.Rule.SrcRemote}}" list="remoteList" autocomplete="off" class="input input-bordered" placeholder="例如：src">
+            <input type="text" id="srcRemote" name="src_remote" value="{{.Rule.SrcRemote}}" list="remoteList" autocomplete="off" class="input input-bordered" placeholder="例如：src">
           </label>
           <label class="form-control">
             <div class="label"><span class="label-text">src_path</span></div>
-            <input type="text" name="src_path" value="{{.Rule.SrcPath}}" placeholder="/Source/A" autocomplete="off" class="input input-bordered">
+            <input type="text" id="srcPath" name="src_path" value="{{.Rule.SrcPath}}" placeholder="/Source/A" autocomplete="off" class="input input-bordered" list="srcPathList">
             <div class="label"><span class="label-text-alt opacity-70">源端目录（相对于 src_remote 的根）。</span></div>
           </label>
         </div>
@@ -62,7 +62,7 @@
           <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
             <label class="form-control">
               <div class="label"><span class="label-text">本地目录</span></div>
-              <input type="text" name="src_local_root" value="{{.Rule.SrcLocalRoot}}" placeholder="例如：D:\\data\\watch 或 /data/watch" autocomplete="off" class="input input-bordered">
+              <input type="text" id="srcLocalRoot" name="src_local_root" value="{{.Rule.SrcLocalRoot}}" placeholder="例如：D:\\data\\watch 或 /data/watch" autocomplete="off" class="input input-bordered" list="localPathList">
               <div class="label"><span class="label-text-alt opacity-70">扫描/传输时以该目录作为源根目录。</span></div>
             </label>
             <label class="form-control">
@@ -79,17 +79,20 @@
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
           <label class="form-control">
             <div class="label"><span class="label-text">目标端 remote</span></div>
-            <input type="text" name="dst_remote" value="{{.Rule.DstRemote}}" list="remoteList" autocomplete="off" class="input input-bordered" placeholder="例如：dst">
+            <input type="text" id="dstRemote" name="dst_remote" value="{{.Rule.DstRemote}}" list="remoteList" autocomplete="off" class="input input-bordered" placeholder="例如：dst">
           </label>
           <label class="form-control">
             <div class="label"><span class="label-text">dst_path</span></div>
-            <input type="text" name="dst_path" value="{{.Rule.DstPath}}" placeholder="/Backup/A" autocomplete="off" class="input input-bordered">
+            <input type="text" id="dstPath" name="dst_path" value="{{.Rule.DstPath}}" placeholder="/Backup/A" autocomplete="off" class="input input-bordered" list="dstPathList">
           </label>
         </div>
 
         <datalist id="remoteList">
           {{range .Remotes}}<option value="{{.}}"></option>{{end}}
         </datalist>
+        <datalist id="srcPathList"></datalist>
+        <datalist id="dstPathList"></datalist>
+        <datalist id="localPathList"></datalist>
 
         <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
           <label class="form-control">
@@ -143,10 +146,94 @@
     if (a) a.style.display = isLocal ? "none" : "";
     if (b) b.style.display = isLocal ? "" : "none";
   }
+
+  function debounce(fn, ms) {
+    let t = null;
+    return (...args) => {
+      if (t) clearTimeout(t);
+      t = setTimeout(() => fn(...args), ms);
+    };
+  }
+
+  function setDatalistOptions(datalist, values) {
+    if (!datalist) return;
+    datalist.innerHTML = "";
+    for (const v of values || []) {
+      const opt = document.createElement("option");
+      opt.value = v;
+      datalist.appendChild(opt);
+    }
+  }
+
+  function bindLocalDirSuggest(input, datalist) {
+    if (!input || !datalist) return;
+    let ctrl = null;
+    const run = async () => {
+      const p = (input.value || "").trim();
+      if (!p) {
+        setDatalistOptions(datalist, []);
+        return;
+      }
+      if (ctrl) ctrl.abort();
+      ctrl = new AbortController();
+      try {
+        const r = await fetch("/api/fs/list?path=" + encodeURIComponent(p), { signal: ctrl.signal });
+        if (!r.ok) {
+          setDatalistOptions(datalist, []);
+          return;
+        }
+        const j = await r.json();
+        setDatalistOptions(datalist, Array.isArray(j.suggestions) ? j.suggestions : []);
+      } catch (e) {
+        if (e && e.name === "AbortError") return;
+        setDatalistOptions(datalist, []);
+      }
+    };
+    const deb = debounce(run, 200);
+    input.addEventListener("input", deb);
+    input.addEventListener("focus", run);
+  }
+
+  function bindRemoteDirSuggest(remoteInput, pathInput, datalist) {
+    if (!remoteInput || !pathInput || !datalist) return;
+    let ctrl = null;
+    const run = async () => {
+      const remote = (remoteInput.value || "").trim();
+      const p = pathInput.value || "";
+      if (!remote) {
+        setDatalistOptions(datalist, []);
+        return;
+      }
+      if (ctrl) ctrl.abort();
+      ctrl = new AbortController();
+      const url = "/api/rclone/dirs?remote=" + encodeURIComponent(remote) + "&path=" + encodeURIComponent(p);
+      try {
+        const r = await fetch(url, { signal: ctrl.signal });
+        if (!r.ok) {
+          setDatalistOptions(datalist, []);
+          return;
+        }
+        const j = await r.json();
+        setDatalistOptions(datalist, Array.isArray(j.suggestions) ? j.suggestions : []);
+      } catch (e) {
+        if (e && e.name === "AbortError") return;
+        setDatalistOptions(datalist, []);
+      }
+    };
+    const deb = debounce(run, 200);
+    remoteInput.addEventListener("input", deb);
+    pathInput.addEventListener("input", deb);
+    pathInput.addEventListener("focus", run);
+  }
+
   const srcKind = document.getElementById("srcKind");
   if (srcKind) {
     applySrcKind(srcKind.value || "remote");
     srcKind.addEventListener("change", (e) => applySrcKind(e.target.value));
   }
+
+  bindLocalDirSuggest(document.getElementById("srcLocalRoot"), document.getElementById("localPathList"));
+  bindRemoteDirSuggest(document.getElementById("srcRemote"), document.getElementById("srcPath"), document.getElementById("srcPathList"));
+  bindRemoteDirSuggest(document.getElementById("dstRemote"), document.getElementById("dstPath"), document.getElementById("dstPathList"));
 </script>
 {{end}}
