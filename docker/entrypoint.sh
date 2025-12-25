@@ -3,6 +3,10 @@ set -eu
 
 DATA_DIR="${DATA_DIR:-/data}"
 
+if [ "${1:-}" = "passwd" ]; then
+  exec /usr/local/bin/rclone-syncd "$@"
+fi
+
 if [ -n "${RCLONE_SYNCD_LISTEN:-}" ]; then
   LISTEN="$RCLONE_SYNCD_LISTEN"
 elif [ -n "${LISTEN_ADDR:-}" ]; then
@@ -14,4 +18,3 @@ else
 fi
 
 exec /usr/local/bin/rclone-syncd -listen "$LISTEN" -data "$DATA_DIR" "$@"
-
