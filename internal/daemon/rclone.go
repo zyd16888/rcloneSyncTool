@@ -99,16 +99,32 @@ type rcStats struct {
 
 func pollRC(ctx context.Context, port int) (rcStats, error) {
 	client := &http.Client{Timeout: 2 * time.Second}
-	url := fmt.Sprintf("http://127.0.0.1:%d/core/stats", port)
-	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	resp, err := client.Do(req)
+	tryPOST := func(url string) (*http.Response, error) {
+		req, _ := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader([]byte(`{}`)))
+		req.Header.Set("Content-Type", "application/json")
+		return client.Do(req)
+	}
+
+	url1 := fmt.Sprintf("http://127.0.0.1:%d/core/stats", port)
+	resp, err := tryPOST(url1)
 	if err != nil {
 		return rcStats{}, err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		b, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return rcStats{}, fmt.Errorf("rc status %d: %s", resp.StatusCode, strings.TrimSpace(string(b)))
+		// Fallback: GET /core/stats (some builds expose GET only).
+		req2, _ := http.NewRequestWithContext(ctx, http.MethodGet, url1, nil)
+		resp2, err2 := client.Do(req2)
+		if err2 != nil {
+			b, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+			return rcStats{}, fmt.Errorf("rc status %d: %s", resp.StatusCode, strings.TrimSpace(string(b)))
+		}
+		defer resp2.Body.Close()
+		if resp2.StatusCode != http.StatusOK {
+			b, _ := io.ReadAll(io.LimitReader(resp2.Body, 4096))
+			return rcStats{}, fmt.Errorf("rc status %d: %s", resp2.StatusCode, strings.TrimSpace(string(b)))
+		}
+		resp = resp2
 	}
 	var m map[string]any
 	if err := json.NewDecoder(resp.Body).Decode(&m); err != nil {

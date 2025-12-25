@@ -36,7 +36,7 @@
       <form method="post" action="/rclone/config/save" class="space-y-3">
         <label class="form-control">
           <div class="label"><span class="label-text">内容</span></div>
-          <textarea name="content" rows="25" class="textarea textarea-bordered font-mono text-xs w-full" placeholder="在这里粘贴/编辑 rclone.conf">{{.Content}}</textarea>
+          <textarea name="content" rows="25" class="textarea textarea-bordered font-mono text-xs w-full" style="min-height: 60vh; height: auto;" placeholder="在这里粘贴/编辑 rclone.conf">{{.Content}}</textarea>
           <div class="label"><span class="label-text-alt opacity-70">保存会直接覆盖现有文件（建议先自行备份）。</span></div>
         </label>
         <div class="flex gap-2">

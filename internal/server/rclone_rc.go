@@ -2,10 +2,12 @@ package server
 
 import (
 	"context"
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -19,26 +21,63 @@ type rcloneTransfer struct {
 
 func fetchRcloneTransfers(ctx context.Context, port int) ([]rcloneTransfer, string, error) {
 	client := &http.Client{Timeout: 2 * time.Second}
-	url := fmt.Sprintf("http://127.0.0.1:%d/core/stats", port)
-	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, "", err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		b, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-		return nil, "", fmt.Errorf("rc status %d: %s", resp.StatusCode, string(b))
+	type attempt struct {
+		Method string
+		URL    string
+		Source string
+		Body   io.Reader
 	}
 
-	var raw struct {
-		Transferring []rcloneTransfer `json:"transferring"`
+	attempts := []attempt{
+		{
+			Method: http.MethodPost,
+			URL:    fmt.Sprintf("http://127.0.0.1:%d/core/stats", port),
+			Source: "core/stats.transferring",
+			Body:   bytes.NewReader([]byte(`{}`)),
+		},
+		{
+			Method: http.MethodGet,
+			URL:    fmt.Sprintf("http://127.0.0.1:%d/core/stats", port),
+			Source: "core/stats.transferring",
+		},
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
-		return nil, "", err
+
+	var lastErr error
+	for _, a := range attempts {
+		req, _ := http.NewRequestWithContext(ctx, a.Method, a.URL, a.Body)
+		if a.Method == http.MethodPost {
+			req.Header.Set("Content-Type", "application/json")
+		}
+		resp, err := client.Do(req)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+
+		if resp.StatusCode != http.StatusOK {
+			b, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+			_ = resp.Body.Close()
+			lastErr = fmt.Errorf("rc status %d: %s", resp.StatusCode, strings.TrimSpace(string(b)))
+			continue
+		}
+
+		var raw struct {
+			Transferring []rcloneTransfer `json:"transferring"`
+		}
+		decodeErr := json.NewDecoder(resp.Body).Decode(&raw)
+		_ = resp.Body.Close()
+		if decodeErr != nil {
+			lastErr = decodeErr
+			continue
+		}
+		if raw.Transferring == nil {
+			return []rcloneTransfer{}, a.Source, nil
+		}
+		return raw.Transferring, a.Source, nil
 	}
-	if raw.Transferring == nil {
-		return []rcloneTransfer{}, "core/stats.transferring", nil
+
+	if lastErr == nil {
+		lastErr = fmt.Errorf("rc request failed")
 	}
-	return raw.Transferring, "core/stats.transferring", nil
+	return nil, "", lastErr
 }

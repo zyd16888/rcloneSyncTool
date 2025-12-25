@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/fsnotify/fsnotify"
@@ -247,16 +248,62 @@ func (w *ruleWorker) startOneJob(scanCtx context.Context, jobCtx context.Context
 	if res.Err != nil {
 		if errors.Is(res.Err, errTerminatedByUser) {
 			_ = w.st.UpdateJobTerminated(jobCtx, jobID, "terminated by user", res.BytesDone, res.AvgSpeed)
-			_ = w.st.ReleaseTransferringBackToQueued(jobCtx, jobID)
+			doneSet, _ := transferredPathsFromLog(logPath)
+			var donePaths []string
+			for _, p := range paths {
+				if _, ok := doneSet[p]; ok {
+					donePaths = append(donePaths, p)
+				}
+			}
+			_ = w.st.FinalizeJobFiles(jobCtx, jobID, donePaths, "queued", "")
+			_ = w.st.ClearJobOnDone(jobCtx, jobID)
+			return
+		}
+		if errors.Is(res.Err, errTerminatedBySignal) || errors.Is(res.Err, context.Canceled) {
+			_ = w.st.UpdateJobTerminated(jobCtx, jobID, "terminated", res.BytesDone, res.AvgSpeed)
+			doneSet, _ := transferredPathsFromLog(logPath)
+			var donePaths []string
+			for _, p := range paths {
+				if _, ok := doneSet[p]; ok {
+					donePaths = append(donePaths, p)
+				}
+			}
+			_ = w.st.FinalizeJobFiles(jobCtx, jobID, donePaths, "queued", "")
+			_ = w.st.ClearJobOnDone(jobCtx, jobID)
 			return
 		}
 		_ = w.st.UpdateJobFailed(jobCtx, jobID, res.Err.Error(), res.BytesDone, res.AvgSpeed)
-		_ = w.st.MarkJobFiles(jobCtx, jobID, "failed", res.Err.Error())
-		_ = w.st.ReleaseTransferringBackToQueued(jobCtx, jobID)
+		doneSet, _ := transferredPathsFromLog(logPath)
+		var donePaths []string
+		for _, p := range paths {
+			if _, ok := doneSet[p]; ok {
+				donePaths = append(donePaths, p)
+			}
+		}
+		_ = w.st.FinalizeJobFiles(jobCtx, jobID, donePaths, "failed", res.Err.Error())
+		_ = w.st.ClearJobOnDone(jobCtx, jobID)
+		return
+	}
+	doneSet, err := transferredPathsFromLog(logPath)
+	if err != nil {
+		_ = w.st.UpdateJobFailed(jobCtx, jobID, "log parse: "+err.Error(), res.BytesDone, res.AvgSpeed)
+		_ = w.st.FinalizeJobFiles(jobCtx, jobID, nil, "queued", "")
+		return
+	}
+	var donePaths []string
+	for _, p := range paths {
+		if _, ok := doneSet[p]; ok {
+			donePaths = append(donePaths, p)
+		}
+	}
+	if len(donePaths) != len(paths) {
+		_ = w.st.UpdateJobFailed(jobCtx, jobID, fmt.Sprintf("incomplete: %d/%d transferred", len(donePaths), len(paths)), res.BytesDone, res.AvgSpeed)
+		_ = w.st.FinalizeJobFiles(jobCtx, jobID, donePaths, "queued", "")
+		_ = w.st.ClearJobOnDone(jobCtx, jobID)
 		return
 	}
 	_ = w.st.UpdateJobDone(jobCtx, jobID, res.BytesDone, res.AvgSpeed)
-	_ = w.st.MarkJobFiles(jobCtx, jobID, "done", "")
+	_ = w.st.FinalizeJobFiles(jobCtx, jobID, donePaths, "queued", "")
 	_ = w.st.ClearJobOnDone(jobCtx, jobID)
 }
 
@@ -337,6 +384,7 @@ type jobResult struct {
 }
 
 var errTerminatedByUser = errors.New("terminated by user")
+var errTerminatedBySignal = errors.New("terminated by signal")
 
 func (w *ruleWorker) runWithMetrics(ctx context.Context, settings store.RuntimeSettings, port int, filesFromPath, logPath, jobID string) jobResult {
 	var src string
@@ -440,6 +488,9 @@ func (w *ruleWorker) runWithMetrics(ctx context.Context, settings store.RuntimeS
 				// keep log in log file; minimal error message here
 				var exitErr *exec.ExitError
 				if errors.As(err, &exitErr) {
+					if st, ok := exitErr.Sys().(syscall.WaitStatus); ok && st.Signaled() {
+						return jobResult{BytesDone: last.Bytes, AvgSpeed: avgSpeed(last.Bytes, start), Err: errTerminatedBySignal}
+					}
 					msg := strings.TrimSpace(stderr.String())
 					if msg == "" {
 						msg = err.Error()

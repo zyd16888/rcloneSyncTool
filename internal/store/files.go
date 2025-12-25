@@ -233,6 +233,58 @@ WHERE job_id=?
 	return err
 }
 
+// FinalizeJobFiles marks some paths as done, and updates remaining transferring files
+// of the job to either queued or failed.
+func (s *Store) FinalizeJobFiles(ctx context.Context, jobID string, donePaths []string, remainingState string, errMsg string) error {
+	if remainingState != "queued" && remainingState != "failed" {
+		return errors.New("invalid remaining state: " + remainingState)
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	if len(donePaths) > 0 {
+		stmt, err := tx.PrepareContext(ctx, `
+UPDATE files
+SET state='done', last_error=''
+WHERE job_id=? AND path=?
+`)
+		if err != nil {
+			return err
+		}
+		for _, p := range donePaths {
+			if _, err := stmt.ExecContext(ctx, jobID, p); err != nil {
+				_ = stmt.Close()
+				return err
+			}
+		}
+		_ = stmt.Close()
+	}
+
+	switch remainingState {
+	case "queued":
+		if _, err := tx.ExecContext(ctx, `
+UPDATE files
+SET state='queued', job_id=NULL, last_error=''
+WHERE job_id=? AND state='transferring'
+`, jobID); err != nil {
+			return err
+		}
+	case "failed":
+		if _, err := tx.ExecContext(ctx, `
+UPDATE files
+SET state='failed', last_error=?, fail_count=fail_count+1
+WHERE job_id=? AND state='transferring'
+`, errMsg, jobID); err != nil {
+			return err
+		}
+	}
+
+	return tx.Commit()
+}
+
 func (s *Store) ReleaseTransferringBackToQueued(ctx context.Context, jobID string) error {
 	_, err := s.db.ExecContext(ctx, `
 UPDATE files
