@@ -1,0 +1,20 @@
+services:
+  rclone-syncd:
+    image: ghcr.io/zyd16888/rclonesynctool:latest
+    container_name: rclone-syncd
+    restart: unless-stopped
+    ports:
+      - "${HOST_PORT:-8080}:8080"
+    environment:
+      TZ: Asia/Shanghai
+      DATA_DIR: /data
+      # 镜像默认已设置：RCLONE_CONFIG=/data/rclone.conf
+      # 如需覆盖可取消注释：
+      # RCLONE_CONFIG: /data/rclone.conf
+      #
+      # 如需修改容器内监听端口/地址，请同时修改 ports 映射右侧端口：
+      # RCLONE_SYNCD_LISTEN: "0.0.0.0:8080"
+      # 或使用 PORT（等价于 -listen 0.0.0.0:$PORT）：
+      # PORT: "8080"
+    volumes:
+      - ./data:/data
