@@ -17,7 +17,7 @@
       <div class="card-body">
         <div class="card-title text-base">整体传输统计</div>
         <div class="text-sm"><span class="opacity-70">已传输总量：</span><b>{{humanBytes .TotalBytes}}</b></div>
-        <div class="text-sm"><span class="opacity-70">当前总速度：</span><b>{{printf "%.1f" .TotalSpeed}} B/s</b></div>
+        <div class="text-sm"><span class="opacity-70">当前总速度：</span><b>{{humanSpeed .TotalSpeed}}</b></div>
         <div class="text-sm"><span class="opacity-70">运行中任务：</span><b>{{.RunningJobs}}</b></div>
       </div>
     </div>
@@ -122,7 +122,7 @@
               </td>
               <td class="opacity-70">{{ts .Job.StartedAt}}</td>
               <td class="opacity-70">{{if .HasM}}{{humanBytes .Metric.Bytes}}{{else}}{{humanBytes .Job.BytesDone}}{{end}}</td>
-              <td class="opacity-70">{{if .HasM}}{{printf "%.1f" .Metric.Speed}} B/s{{else}}{{printf "%.1f" .Job.AvgSpeed}} B/s{{end}}</td>
+              <td class="opacity-70">{{if .HasM}}{{humanSpeed .Metric.Speed}}{{else}}{{humanSpeed .Job.AvgSpeed}}{{end}}</td>
             </tr>
             {{end}}
           </tbody>

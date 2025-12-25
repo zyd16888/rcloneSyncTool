@@ -89,7 +89,7 @@
               <td class="opacity-70">{{ts .Job.StartedAt}}</td>
               <td class="opacity-70">{{ts .Job.EndedAt}}</td>
               <td class="opacity-70">{{if .HasM}}{{humanBytes .Metric.Bytes}}{{else}}{{humanBytes .Job.BytesDone}}{{end}}</td>
-              <td class="opacity-70">{{if .HasM}}{{printf "%.1f" .Metric.Speed}} B/s{{else}}{{printf "%.1f" .Job.AvgSpeed}} B/s{{end}}</td>
+              <td class="opacity-70">{{if .HasM}}{{humanSpeed .Metric.Speed}}{{else}}{{humanSpeed .Job.AvgSpeed}}{{end}}</td>
               <td class="opacity-70" style="max-width: 320px; word-break: break-word;">{{.Job.Error}}</td>
               <td>
                 {{if eq .Job.Status "running"}}

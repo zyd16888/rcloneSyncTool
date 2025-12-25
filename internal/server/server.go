@@ -58,6 +58,7 @@ func New(st *store.Store, supervisor *daemon.Supervisor, logDir string, appLogPa
 		},
 		"hasPrefix": strings.HasPrefix,
 		"humanBytes": humanBytes,
+		"humanSpeed": humanSpeed,
 	}
 	s.pages = map[string]*template.Template{}
 	files, err := fs.Glob(content, "templates/*.html")
@@ -797,4 +798,11 @@ func humanBytes(n int64) string {
 	value := float64(n) / float64(div)
 	suffix := string("KMGTPE"[exp]) + "iB"
 	return strconv.FormatFloat(value, 'f', 1, 64) + " " + suffix
+}
+
+func humanSpeed(n float64) string {
+	if n <= 0 {
+		return "0 B/s"
+	}
+	return humanBytes(int64(n+0.5)) + "/s"
 }
