@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -33,6 +34,9 @@ type Server struct {
 	appLogPath string
 
 	pages map[string]*template.Template
+
+	doneMu    sync.Mutex
+	doneCache map[string]*doneCountCacheEntry
 }
 
 func New(st *store.Store, supervisor *daemon.Supervisor, logDir string, appLogPath string) http.Handler {
@@ -41,6 +45,7 @@ func New(st *store.Store, supervisor *daemon.Supervisor, logDir string, appLogPa
 		supervisor: supervisor,
 		logDir:     logDir,
 		appLogPath: appLogPath,
+		doneCache:  map[string]*doneCountCacheEntry{},
 	}
 	funcs := template.FuncMap{
 		"since": func(t time.Time) string {
@@ -576,11 +581,14 @@ func (s *Server) apiJob(c *gin.Context) {
 		return
 	}
 	metric, hasM, _ := s.st.LatestJobMetric(ctx, job.JobID)
+	doneCount, doneErr := s.jobDoneCount(job.JobID, job.LogPath)
 	c.Writer.Header().Set("Content-Type", "application/json; charset=utf-8")
 	_ = json.NewEncoder(c.Writer).Encode(map[string]any{
 		"job":     job,
 		"metric":  metric,
 		"hasMetric": hasM,
+		"doneCount": doneCount,
+		"doneError": doneErr,
 	})
 }
 

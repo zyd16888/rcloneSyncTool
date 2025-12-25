@@ -51,8 +51,9 @@
         <div class="grid grid-cols-2 gap-3 text-sm">
           <div><b>已传输：</b><span id="bytes" class="opacity-70">-</span></div>
           <div><b>当前速度：</b><span id="speed" class="opacity-70">-</span></div>
-          <div><b>并发传输数：</b><span id="transfers" class="opacity-70">-</span></div>
+          <div><b>当前并发传输数：</b><span id="transfers" class="opacity-70">-</span></div>
           <div><b>错误数：</b><span id="errors" class="opacity-70">-</span></div>
+          <div><b>已完成文件数：</b><span id="doneFiles" class="opacity-70">-</span></div>
         </div>
       </div>
     </div>
@@ -118,8 +119,8 @@
     if (!d.hasMetric) return;
     document.getElementById("bytes").textContent = humanBytes(d.metric.Bytes);
     document.getElementById("speed").textContent = humanSpeed(d.metric.Speed);
-    document.getElementById("transfers").textContent = d.metric.Transfers;
     document.getElementById("errors").textContent = d.metric.Errors;
+    document.getElementById("doneFiles").textContent = d.doneError ? "-" : (d.doneCount ?? "-");
   }
   refresh();
   setInterval(refresh, 1000);
@@ -132,15 +133,18 @@
     const d = await r.json();
     const list = d.transfers || [];
     if (!d.running) {
+      document.getElementById("transfers").textContent = "0";
       body.innerHTML = "";
       hint.textContent = "任务未运行，暂无实时传输列表。";
       return;
     }
     if (d.error) {
+      document.getElementById("transfers").textContent = "-";
       body.innerHTML = "";
       hint.textContent = "获取失败：" + d.error;
       return;
     }
+    document.getElementById("transfers").textContent = String(list.length);
     if (list.length === 0) {
       body.innerHTML = "";
       hint.textContent = "当前无正在传输的文件（可能在 check/idle 或已接近完成）。";
