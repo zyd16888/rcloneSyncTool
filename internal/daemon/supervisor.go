@@ -141,6 +141,20 @@ func (s *Supervisor) TriggerScan(ruleID string) bool {
 	return true
 }
 
+func (s *Supervisor) StopRule(ruleID string) bool {
+	s.mu.Lock()
+	w, ok := s.workers[ruleID]
+	if ok {
+		delete(s.workers, ruleID)
+	}
+	s.mu.Unlock()
+	if !ok {
+		return false
+	}
+	w.stop()
+	return true
+}
+
 func (s *Supervisor) TerminateJob(jobID string) bool {
 	if s.jobs == nil {
 		return false

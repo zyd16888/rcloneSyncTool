@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -31,6 +32,9 @@ type ruleWorker struct {
 	scanCh chan struct{}
 	stopCh chan struct{}
 	stopped atomic.Bool
+
+	cancelMu sync.Mutex
+	cancel   context.CancelFunc
 }
 
 func newRuleWorker(st *store.Store, rule store.Rule, pm *PortManager, gl *GlobalLimiter, jr *JobRegistry) *ruleWorker {
@@ -46,9 +50,25 @@ func newRuleWorker(st *store.Store, rule store.Rule, pm *PortManager, gl *Global
 	}
 }
 
+func (w *ruleWorker) setCancel(cancel context.CancelFunc) {
+	w.cancelMu.Lock()
+	w.cancel = cancel
+	stopped := w.stopped.Load()
+	w.cancelMu.Unlock()
+	if stopped && cancel != nil {
+		cancel()
+	}
+}
+
 func (w *ruleWorker) stop() {
 	if w.stopped.CompareAndSwap(false, true) {
 		close(w.stopCh)
+	}
+	w.cancelMu.Lock()
+	cancel := w.cancel
+	w.cancelMu.Unlock()
+	if cancel != nil {
+		cancel()
 	}
 }
 
@@ -60,10 +80,11 @@ func (w *ruleWorker) triggerScan() {
 }
 
 func (w *ruleWorker) run(ctx context.Context) {
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
+	scanCtx, scanCancel := context.WithCancel(ctx)
+	defer scanCancel()
+	w.setCancel(scanCancel)
 
-	settings, err := w.st.RuntimeSettings(ctx)
+	settings, err := w.st.RuntimeSettings(scanCtx)
 	if err != nil {
 		log.Printf("rule %s: load settings: %v", w.rule.ID, err)
 		return
@@ -75,7 +96,7 @@ func (w *ruleWorker) run(ctx context.Context) {
 	defer schedTicker.Stop()
 
 	if w.rule.SrcKind == "local" && w.rule.LocalWatch {
-		go w.watchLocal(ctx)
+		go w.watchLocal(scanCtx)
 	}
 
 	// Prime: run a scan soon.
@@ -83,16 +104,17 @@ func (w *ruleWorker) run(ctx context.Context) {
 
 	for {
 		select {
-		case <-ctx.Done():
+		case <-scanCtx.Done():
 			return
 		case <-w.stopCh:
+			scanCancel()
 			return
 		case <-scanTicker.C:
-			w.doScan(ctx)
+			w.doScan(scanCtx)
 		case <-w.scanCh:
-			w.doScan(ctx)
+			w.doScan(scanCtx)
 		case <-schedTicker.C:
-			w.doSchedule(ctx)
+			w.doSchedule(scanCtx, ctx)
 		}
 	}
 }
@@ -117,15 +139,17 @@ func (w *ruleWorker) doScan(ctx context.Context) {
 	}
 }
 
-func (w *ruleWorker) doSchedule(ctx context.Context) {
+func (w *ruleWorker) doSchedule(scanCtx context.Context, jobCtx context.Context) {
 	// keep queue warm
-	if _, err := w.st.EnqueueStable(ctx, w.rule.ID, w.rule.BatchSize, w.rule.MinFileSizeBytes); err != nil {
+	if _, err := w.st.EnqueueStable(scanCtx, w.rule.ID, w.rule.BatchSize, w.rule.MinFileSizeBytes); err != nil {
 		log.Printf("rule %s: enqueue stable: %v", w.rule.ID, err)
 	}
 	for {
 		select {
+		case <-scanCtx.Done():
+			return
 		case w.sem <- struct{}{}:
-			go w.startOneJob(ctx)
+			go w.startOneJob(scanCtx, jobCtx)
 			continue
 		default:
 			return
@@ -133,19 +157,23 @@ func (w *ruleWorker) doSchedule(ctx context.Context) {
 	}
 }
 
-func (w *ruleWorker) startOneJob(ctx context.Context) {
+func (w *ruleWorker) startOneJob(scanCtx context.Context, jobCtx context.Context) {
 	defer func() { <-w.sem }()
 
-	settings, err := w.st.RuntimeSettings(ctx)
+	if w.stopped.Load() || scanCtx.Err() != nil {
+		return
+	}
+
+	settings, err := w.st.RuntimeSettings(scanCtx)
 	if err != nil {
 		log.Printf("rule %s: settings: %v", w.rule.ID, err)
 		return
 	}
-	if !w.st.HasQueued(ctx, w.rule.ID) {
+	if !w.st.HasQueued(scanCtx, w.rule.ID) {
 		return
 	}
 	if w.gl != nil {
-		if ok := w.gl.Acquire(ctx); !ok {
+		if ok := w.gl.Acquire(scanCtx); !ok {
 			return
 		}
 		defer w.gl.Release()
@@ -158,7 +186,7 @@ func (w *ruleWorker) startOneJob(ctx context.Context) {
 	defer w.pm.Release(port)
 
 	jobID := newID()
-	paths, err := w.st.ClaimQueuedForJob(ctx, w.rule, jobID, w.rule.BatchSize)
+	paths, err := w.st.ClaimQueuedForJob(scanCtx, w.rule, jobID, w.rule.BatchSize)
 	if err != nil {
 		log.Printf("rule %s: claim queued: %v", w.rule.ID, err)
 		return
@@ -166,17 +194,28 @@ func (w *ruleWorker) startOneJob(ctx context.Context) {
 	if len(paths) == 0 {
 		return
 	}
+	if w.stopped.Load() || scanCtx.Err() != nil {
+		_ = w.st.ReleaseTransferringBackToQueued(jobCtx, jobID)
+		return
+	}
 
 	baseDir := filepath.Dir(settings.LogDir)
 	jobDir := filepath.Join(baseDir, "jobs", w.rule.ID, jobID)
 	if err := os.MkdirAll(jobDir, 0o755); err != nil {
 		log.Printf("rule %s: mkdir job dir: %v", w.rule.ID, err)
+		_ = w.st.ReleaseTransferringBackToQueued(jobCtx, jobID)
 		return
 	}
 
 	filesFrom := filepath.Join(jobDir, "files.txt")
 	if err := os.WriteFile(filesFrom, []byte(strings.Join(paths, "\n")+"\n"), 0o600); err != nil {
 		log.Printf("rule %s: write files-from: %v", w.rule.ID, err)
+		_ = w.st.ReleaseTransferringBackToQueued(jobCtx, jobID)
+		return
+	}
+
+	if w.stopped.Load() || scanCtx.Err() != nil {
+		_ = w.st.ReleaseTransferringBackToQueued(jobCtx, jobID)
 		return
 	}
 
@@ -189,30 +228,36 @@ func (w *ruleWorker) startOneJob(ctx context.Context) {
 		StartedAt:    time.Now(),
 		LogPath:      logPath,
 	}
-	if err := w.st.CreateJobRow(ctx, j); err != nil {
+	if err := w.st.CreateJobRow(jobCtx, j); err != nil {
 		log.Printf("rule %s: create job: %v", w.rule.ID, err)
-		_ = w.st.ReleaseTransferringBackToQueued(ctx, jobID)
+		_ = w.st.ReleaseTransferringBackToQueued(jobCtx, jobID)
 		return
 	}
 
-	jobCtx, cancel := context.WithCancel(ctx)
+	if w.stopped.Load() || scanCtx.Err() != nil {
+		_ = w.st.UpdateJobTerminated(jobCtx, jobID, "rule disabled", 0, 0)
+		_ = w.st.ReleaseTransferringBackToQueued(jobCtx, jobID)
+		return
+	}
+
+	jobCtx, cancel := context.WithCancel(jobCtx)
 	defer cancel()
 
 	res := w.runWithMetrics(jobCtx, settings, port, filesFrom, logPath, jobID)
 	if res.Err != nil {
 		if errors.Is(res.Err, errTerminatedByUser) {
-			_ = w.st.UpdateJobTerminated(ctx, jobID, "terminated by user", res.BytesDone, res.AvgSpeed)
-			_ = w.st.ReleaseTransferringBackToQueued(ctx, jobID)
+			_ = w.st.UpdateJobTerminated(jobCtx, jobID, "terminated by user", res.BytesDone, res.AvgSpeed)
+			_ = w.st.ReleaseTransferringBackToQueued(jobCtx, jobID)
 			return
 		}
-		_ = w.st.UpdateJobFailed(ctx, jobID, res.Err.Error(), res.BytesDone, res.AvgSpeed)
-		_ = w.st.MarkJobFiles(ctx, jobID, "failed", res.Err.Error())
-		_ = w.st.ReleaseTransferringBackToQueued(ctx, jobID)
+		_ = w.st.UpdateJobFailed(jobCtx, jobID, res.Err.Error(), res.BytesDone, res.AvgSpeed)
+		_ = w.st.MarkJobFiles(jobCtx, jobID, "failed", res.Err.Error())
+		_ = w.st.ReleaseTransferringBackToQueued(jobCtx, jobID)
 		return
 	}
-	_ = w.st.UpdateJobDone(ctx, jobID, res.BytesDone, res.AvgSpeed)
-	_ = w.st.MarkJobFiles(ctx, jobID, "done", "")
-	_ = w.st.ClearJobOnDone(ctx, jobID)
+	_ = w.st.UpdateJobDone(jobCtx, jobID, res.BytesDone, res.AvgSpeed)
+	_ = w.st.MarkJobFiles(jobCtx, jobID, "done", "")
+	_ = w.st.ClearJobOnDone(jobCtx, jobID)
 }
 
 func (w *ruleWorker) watchLocal(ctx context.Context) {

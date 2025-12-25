@@ -360,6 +360,9 @@ func (s *Server) ruleSavePost(c *gin.Context) {
 		c.String(http.StatusBadRequest, err.Error())
 		return
 	}
+	if !rule.Enabled && s.supervisor != nil {
+		s.supervisor.StopRule(rule.ID)
+	}
 	s.redirect(c, "/rules")
 }
 
@@ -380,7 +383,13 @@ func (s *Server) ruleTogglePost(c *gin.Context) {
 		return
 	}
 	rule.Enabled = enabled
-	_ = s.st.UpsertRule(ctx, rule)
+	if err := s.st.UpsertRule(ctx, rule); err != nil {
+		c.String(http.StatusBadRequest, err.Error())
+		return
+	}
+	if !enabled && s.supervisor != nil {
+		s.supervisor.StopRule(id)
+	}
 	s.redirect(c, "/rules")
 }
 
