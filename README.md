@@ -127,8 +127,6 @@ echo "新密码" | docker run --rm -i -v "$(pwd)/data:/data" ghcr.io/zyd16888/rc
 
 ## 界面截图
 
-把截图放到 `docs/screenshots/`，然后替换下面这些占位图：
-
 ![登录/初始化密码](https://github.com/user-attachments/assets/25384944-9f60-4378-a6a7-27dc6a6d7a1a)
 
 ![rclone 配置编辑](https://github.com/user-attachments/assets/ff1f296b-ed74-41a0-963c-8dd5231d6675)
