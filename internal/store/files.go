@@ -84,6 +84,7 @@ ON CONFLICT(rule_id, path) DO UPDATE SET
     WHEN files.state='transferring' THEN files.state
     WHEN files.state='queued' THEN files.state
     WHEN files.state='done' AND (excluded.size!=files.size OR excluded.mod_time!=files.mod_time) THEN 'new'
+    WHEN files.state='done' AND (excluded.size=files.size AND excluded.mod_time=files.mod_time) THEN 'done'
     WHEN (excluded.size=files.size AND excluded.mod_time=files.mod_time) THEN 'stable'
     WHEN (strftime('%s','now') - strftime('%s', excluded.mod_time) > ?) THEN 'stable'
     ELSE 'new'
