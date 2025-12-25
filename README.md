@@ -31,7 +31,11 @@
 #### 直接使用 GHCR 镜像
 
 ```bash
+# 官方 rclone（默认 tag）
 docker pull ghcr.io/zyd16888/rclonesynctool:latest
+
+# wiserain rclone（带 115 支持）
+docker pull ghcr.io/zyd16888/rclonesynctool:latest-115
 ```
 
 运行（持久化到当前目录 `./data`）：
@@ -40,6 +44,12 @@ docker pull ghcr.io/zyd16888/rclonesynctool:latest
 mkdir -p ./data
 touch ./data/rclone.conf
 docker run --rm -p 8080:8080 -v "$(pwd)/data:/data" ghcr.io/zyd16888/rclonesynctool:latest
+```
+
+如需使用 115 版本，把镜像 tag 改为 `:latest-115`（或发布版本号的 `:vX.Y.Z-115`）：
+
+```bash
+docker run --rm -p 8080:8080 -v "$(pwd)/data:/data" ghcr.io/zyd16888/rclonesynctool:latest-115
 ```
 
 容器内默认监听 `0.0.0.0:8080`。如需改端口：
@@ -138,8 +148,13 @@ git push origin v0.1.0
 
 同时会构建并推送 Docker 镜像到 GHCR：
 
-- `ghcr.io/<owner>/<repo>:vX.Y.Z`
-- `ghcr.io/<owner>/<repo>:latest`
+- 官方 rclone：
+  - `ghcr.io/<owner>/<repo>:vX.Y.Z`
+  - `ghcr.io/<owner>/<repo>:latest`
+- wiserain rclone（带 115 支持）：
+  - `ghcr.io/<owner>/<repo>:vX.Y.Z-115`
+  - `ghcr.io/<owner>/<repo>:latest-115`
+  - 说明：镜像内通过 `install.sh` 安装 wiserain rclone；会尽量构建 `linux/amd64` + `linux/arm64`，若 wiserain release 未提供 arm64，则回退为 `linux/arm/v6` 或仅构建 `linux/amd64`
 
 ## systemd（Linux 后台运行）
 

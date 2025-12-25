@@ -1,5 +1,7 @@
 services:
   rclone-syncd:
+    # 官方 rclone：ghcr.io/zyd16888/rclonesynctool:latest
+    # wiserain（带 115 支持）：ghcr.io/zyd16888/rclonesynctool:latest-115
     image: ghcr.io/zyd16888/rclonesynctool:latest
     container_name: rclone-syncd
     restart: unless-stopped
