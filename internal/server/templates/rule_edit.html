@@ -168,6 +168,34 @@
         </div>
 
         <label class="form-control">
+          <div class="label">
+            <span class="label-text">忽略扩展名(可选)</span>
+            <select class="select select-bordered select-xs" onchange="appendPreset(this)">
+              <option value="">+ 添加预设...</option>
+              {{range .Presets}}
+              <option value="{{.Extensions}}">{{.Name}}</option>
+              {{end}}
+            </select>
+          </div>
+          <input type="text" name="ignore_extensions" value="{{.Rule.IgnoreExtensions}}" class="input input-bordered" placeholder="例如：.url .html .tmp">
+          <div class="label"><span class="label-text-alt opacity-70">多个扩展名用空格分隔；这些文件将不会被传输。</span></div>
+        </label>
+        <script>
+          function appendPreset(select) {
+            const val = select.value;
+            if (!val) return;
+            const input = document.querySelector('[name=ignore_extensions]');
+            // Split, clean, and merge
+            const current = new Set((input.value || "").trim().split(/\s+/).filter(x => x));
+            const toAdd = val.trim().split(/\s+/).filter(x => x);
+            toAdd.forEach(x => current.add(x));
+            input.value = Array.from(current).join(' ');
+            // Reset select
+            select.value = "";
+          }
+        </script>
+
+        <label class="form-control">
           <div class="label"><span class="label-text">自定义参数(可选)（rclone）</span></div>
           <textarea name="rclone_extra_args" rows="3" class="textarea textarea-bordered font-mono text-xs w-full" style="border:1px solid rgba(179, 190, 206, 0.35);padding:.75rem 1rem;border-radius:.5rem;" placeholder='例如：--exclude "*.tmp" --drive-acknowledge-abuse'>{{.Rule.RcloneExtraArgs}}</textarea>
           <div class="label">

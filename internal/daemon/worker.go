@@ -491,6 +491,14 @@ func (w *ruleWorker) runWithMetrics(ctx context.Context, settings store.RuntimeS
 	if w.rule.MinFileSizeBytes > 0 {
 		args = append(args, "--min-size", fmt.Sprintf("%d", w.rule.MinFileSizeBytes))
 	}
+	if rawExts := strings.ReplaceAll(w.rule.IgnoreExtensions, ",", " "); strings.TrimSpace(rawExts) != "" {
+		for _, ext := range strings.Fields(rawExts) {
+			if strings.HasPrefix(ext, ".") && !strings.Contains(ext, "*") {
+				ext = "*" + ext
+			}
+			args = append(args, "--exclude", ext)
+		}
+	}
 	if strings.TrimSpace(w.rule.RcloneExtraArgs) != "" {
 		parsed, err := ParseRcloneArgs(w.rule.RcloneExtraArgs)
 		if err != nil {

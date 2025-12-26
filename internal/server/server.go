@@ -113,6 +113,10 @@ func New(st *store.Store, supervisor *daemon.Supervisor, logDir string, appLogPa
 	r.POST("/limit_groups/save", s.limitGroupsSavePost)
 	r.POST("/limit_groups/delete", s.limitGroupsDeletePost)
 
+	r.GET("/extension_presets", s.extensionPresetsList)
+	r.POST("/extension_presets/save", s.extensionPresetsSavePost)
+	r.POST("/extension_presets/delete", s.extensionPresetsDeletePost)
+
 	r.GET("/manual", s.manualGet)
 	r.POST("/manual/start", s.manualStartPost)
 
@@ -333,12 +337,14 @@ func (s *Server) ruleEditGet(c *gin.Context) {
 	remotes, err := s.listRcloneRemotes(ctx)
 	rules, _ := s.st.ListRules(ctx)
 	limitGroups, _ := s.st.ListLimitGroups(ctx)
+	presets, _ := s.st.ListExtensionPresets(ctx)
 	s.render(c, "rule_edit", map[string]any{
 		"Active":  "rules",
 		"Rule":    rule,
 		"Remotes": remotes,
 		"Rules":   rules,
 		"LimitGroups": limitGroups,
+		"Presets": presets,
 		"Error":   errString(err),
 	})
 }
@@ -397,6 +403,40 @@ func (s *Server) limitGroupsDeletePost(c *gin.Context) {
 	s.redirect(c, "/limit_groups")
 }
 
+func (s *Server) extensionPresetsList(c *gin.Context) {
+	ctx := c.Request.Context()
+	presets, _ := s.st.ListExtensionPresets(ctx)
+	s.render(c, "extension_presets", map[string]any{
+		"Active":  "rules",
+		"Presets": presets,
+	})
+}
+
+func (s *Server) extensionPresetsSavePost(c *gin.Context) {
+	ctx := c.Request.Context()
+	name := strings.TrimSpace(c.PostForm("name"))
+	exts := strings.TrimSpace(c.PostForm("extensions"))
+	if name == "" {
+		c.String(http.StatusBadRequest, "名称不能为空")
+		return
+	}
+	p := store.ExtensionPreset{
+		Name:       name,
+		Extensions: exts,
+	}
+	if err := s.st.UpsertExtensionPreset(ctx, p); err != nil {
+		c.String(http.StatusBadRequest, err.Error())
+		return
+	}
+	s.redirect(c, "/extension_presets")
+}
+
+func (s *Server) extensionPresetsDeletePost(c *gin.Context) {
+	ctx := c.Request.Context()
+	_ = s.st.DeleteExtensionPreset(ctx, c.PostForm("name"))
+	s.redirect(c, "/extension_presets")
+}
+
 func (s *Server) manualGet(c *gin.Context) {
 	ctx := c.Request.Context()
 	copyFromID := strings.TrimSpace(c.Query("copy_from_id"))
@@ -416,11 +456,13 @@ func (s *Server) manualGet(c *gin.Context) {
 
 	remotes, err := s.listRcloneRemotes(ctx)
 	rules, _ := s.st.ListRules(ctx)
+	presets, _ := s.st.ListExtensionPresets(ctx)
 	s.render(c, "manual", map[string]any{
 		"Active":  "rules",
 		"Remotes": remotes,
 		"Rule":    rule,
 		"Rules":   rules,
+		"Presets": presets,
 		"Error":   errString(err),
 	})
 }
@@ -453,6 +495,7 @@ func (s *Server) manualStartPost(c *gin.Context) {
 		DstPath:          c.PostForm("dst_path"),
 		TransferMode:     c.PostForm("transfer_mode"),
 		RcloneExtraArgs:  c.PostForm("rclone_extra_args"),
+		IgnoreExtensions: c.PostForm("ignore_extensions"),
 		Bwlimit:          c.PostForm("bwlimit"),
 		MinFileSizeBytes: minSize,
 		IsManual:         true,
@@ -525,6 +568,7 @@ func (s *Server) ruleSavePost(c *gin.Context) {
 		DstPath:         c.PostForm("dst_path"),
 		TransferMode:    c.PostForm("transfer_mode"),
 		RcloneExtraArgs: c.PostForm("rclone_extra_args"),
+		IgnoreExtensions: c.PostForm("ignore_extensions"),
 		Bwlimit:         c.PostForm("bwlimit"),
 		DailyLimitBytes: dailyLimit,
 		MinFileSizeBytes: minSize,

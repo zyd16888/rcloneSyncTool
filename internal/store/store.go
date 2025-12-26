@@ -129,6 +129,12 @@ CREATE TABLE IF NOT EXISTS limit_groups (
   updated_at INTEGER NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS extension_presets (
+  name TEXT PRIMARY KEY,
+  extensions TEXT NOT NULL DEFAULT '',
+  updated_at INTEGER NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS settings (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL,
@@ -165,6 +171,9 @@ CREATE TABLE IF NOT EXISTS settings (
 		return err
 	}
 	if err := s.ensureRuleColumn(ctx, "is_manual", "INTEGER NOT NULL DEFAULT 0"); err != nil {
+		return err
+	}
+	if err := s.ensureRuleColumn(ctx, "ignore_extensions", "TEXT NOT NULL DEFAULT ''"); err != nil {
 		return err
 	}
 	return nil

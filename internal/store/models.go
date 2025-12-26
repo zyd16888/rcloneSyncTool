@@ -23,6 +23,12 @@ type Remote struct {
 	ConfigJSON string
 }
 
+type ExtensionPreset struct {
+	Name       string
+	Extensions string
+	UpdatedAt  time.Time
+}
+
 func (r *Remote) Normalize() error {
 	r.Name = strings.TrimSpace(r.Name)
 	r.Type = strings.TrimSpace(r.Type)
@@ -70,6 +76,7 @@ type Rule struct {
 	DstPath         string
 	TransferMode    string
 	RcloneExtraArgs string
+	IgnoreExtensions string
 	Bwlimit         string
 	DailyLimitBytes int64
 	MinFileSizeBytes int64
@@ -100,6 +107,7 @@ func (r *Rule) Normalize() error {
 	r.SrcLocalRoot = strings.TrimSpace(r.SrcLocalRoot)
 	r.TransferMode = strings.TrimSpace(strings.ToLower(r.TransferMode))
 	r.RcloneExtraArgs = strings.TrimSpace(r.RcloneExtraArgs)
+	r.IgnoreExtensions = strings.TrimSpace(r.IgnoreExtensions)
 	if r.TransferMode == "" {
 		r.TransferMode = "copy"
 	}

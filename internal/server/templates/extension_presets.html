@@ -1,0 +1,76 @@
+{{define "content"}}
+<div class="space-y-4">
+  <div class="flex items-center justify-between">
+    <div>
+      <h1 class="text-xl font-bold">扩展名预设</h1>
+      <div class="text-sm opacity-70">预定义的扩展名集合，方便在规则中快速选择使用。</div>
+    </div>
+    <a class="btn btn-sm btn-ghost" href="/rules">返回规则列表</a>
+  </div>
+
+  <div class="card bg-base-100 border border-base-200">
+    <div class="card-body">
+      <h3 class="card-title text-base">添加/编辑预设</h3>
+      <form method="post" action="/extension_presets/save" class="flex gap-4 items-end">
+        <label class="form-control w-full max-w-xs">
+          <div class="label"><span class="label-text">预设名称</span></div>
+          <input type="text" name="name" placeholder="例如：网页文件" class="input input-bordered" required>
+        </label>
+        <label class="form-control w-full">
+          <div class="label"><span class="label-text">扩展名</span></div>
+          <input type="text" name="extensions" placeholder=".url .html .htm" class="input input-bordered" required>
+        </label>
+        <button class="btn btn-primary" type="submit">保存</button>
+      </form>
+    </div>
+  </div>
+
+  <div class="card bg-base-100 border border-base-200">
+    <div class="card-body p-0">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>名称</th>
+            <th>内容</th>
+            <th class="w-20">操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{range .Presets}}
+          <tr class="hover:bg-base-200">
+            <td class="font-bold">{{.Name}}</td>
+            <td class="font-mono text-sm opacity-70">{{.Extensions}}</td>
+            <td>
+              <form method="post" action="/extension_presets/delete" onsubmit="return confirm('确定删除？');">
+                <input type="hidden" name="name" value="{{.Name}}">
+                <button class="btn btn-xs btn-error btn-outline">删除</button>
+              </form>
+            </td>
+          </tr>
+          {{else}}
+          <tr>
+            <td colspan="3" class="text-center opacity-50 py-8">暂无预设，请先添加。</td>
+          </tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+  // 点击表格行自动填充到上方表单以便编辑
+  document.querySelectorAll('tbody tr').forEach(tr => {
+    tr.addEventListener('click', (e) => {
+      if (e.target.closest('button')) return; // 忽略删除按钮点击
+      const name = tr.cells[0].innerText.trim();
+      const ext = tr.cells[1].innerText.trim();
+      const form = document.querySelector('form[action="/extension_presets/save"]');
+      if (form) {
+        form.querySelector('[name=name]').value = name;
+        form.querySelector('[name=extensions]').value = ext;
+      }
+    });
+  });
+</script>
+{{end}}
