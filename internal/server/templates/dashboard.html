@@ -15,10 +15,33 @@
     </div>
     <div class="card bg-base-100 border border-base-200">
       <div class="card-body">
-        <div class="card-title text-base">整体传输统计</div>
-        <div class="text-sm"><span class="opacity-70">已传输总量：</span><b>{{humanBytes .TotalBytes}}</b></div>
-        <div class="text-sm"><span class="opacity-70">当前总速度：</span><b>{{humanSpeed .TotalSpeed}}</b></div>
+        <div class="card-title text-base">实时状态</div>
+        <div class="text-sm"><span class="opacity-70">当前总速度：</span><b id="statSpeed">{{humanSpeed .TotalSpeed}}</b></div>
         <div class="text-sm"><span class="opacity-70">运行中任务：</span><b>{{.RunningJobs}}</b></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+    <div class="card bg-base-100 border border-base-200">
+      <div class="card-body">
+        <div class="card-title text-base">今日传输</div>
+        <div class="text-2xl font-bold text-primary" id="statToday">{{humanBytes .BytesToday}}</div>
+        <div class="text-xs opacity-70">自今日 00:00 起</div>
+      </div>
+    </div>
+    <div class="card bg-base-100 border border-base-200">
+      <div class="card-body">
+        <div class="card-title text-base">过去 24 小时</div>
+        <div class="text-2xl font-bold text-secondary" id="stat24h">{{humanBytes .Bytes24h}}</div>
+        <div class="text-xs opacity-70">滚动统计</div>
+      </div>
+    </div>
+    <div class="card bg-base-100 border border-base-200">
+      <div class="card-body">
+        <div class="card-title text-base">历史总计</div>
+        <div class="text-2xl font-bold">{{humanBytes .TotalBytes}}</div>
+        <div class="text-xs opacity-70">所有已归档任务</div>
       </div>
     </div>
   </div>
@@ -275,6 +298,15 @@
         if (emptyBox) emptyBox.style.display = (d.runningJobs || 0) === 0 ? "" : "none";
         pointsSpeed.push({ x: d.ts, y: d.speedTotal || 0 });
         pointsBytes.push({ x: d.ts, y: d.bytesTotal || 0 });
+        
+        // Update realtime stats text
+        const elSpeed = document.getElementById("statSpeed");
+        if (elSpeed) elSpeed.innerText = humanSpeed(d.speedTotal || 0);
+        const elToday = document.getElementById("statToday");
+        if (elToday) elToday.innerText = humanBytes(d.bytesToday || 0);
+        const el24h = document.getElementById("stat24h");
+        if (el24h) el24h.innerText = humanBytes(d.bytes24h || 0);
+
         capPoints();
         canvasFit(speedCanvas);
         canvasFit(bytesCanvas);

@@ -257,6 +257,21 @@ func (s *Store) TotalSpeedRunning(ctx context.Context) (float64, error) {
 	return n, err
 }
 
+func (s *Store) StatsBytesSince(ctx context.Context, since time.Time) (int64, error) {
+	// Sum bytes of:
+	// 1. Jobs ended after 'since' (status != 'running')
+	// 2. Jobs currently running (status == 'running'), regardless of start time (treat all current progress as active)
+	q := `
+SELECT COALESCE(SUM(bytes_done), 0)
+FROM jobs
+WHERE (status = 'running')
+   OR (ended_at >= ? AND status != 'running')
+`
+	var n int64
+	err := s.db.QueryRowContext(ctx, q, since.Unix()).Scan(&n)
+	return n, err
+}
+
 func (s *Store) CountRunningJobsAll(ctx context.Context) (int, error) {
 	var n int
 	err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM jobs WHERE status='running'`).Scan(&n)

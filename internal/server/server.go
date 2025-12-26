@@ -196,6 +196,12 @@ func (s *Server) dashboard(c *gin.Context) {
 	totalBytes, _ := s.st.TotalBytesDone(ctx)
 	totalSpeed, _ := s.st.TotalSpeedRunning(ctx)
 	runningJobs, _ := s.st.CountRunningJobsAll(ctx)
+	
+	now := time.Now()
+	todayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	bytesToday, _ := s.st.StatsBytesSince(ctx, todayStart)
+	bytes24h, _ := s.st.StatsBytesSince(ctx, now.Add(-24*time.Hour))
+
 	settings, _ := s.st.RuntimeSettings(ctx)
 	hasPrev := jobsPage > 1
 	hasNext := jobsPage < totalPages
@@ -207,6 +213,8 @@ func (s *Server) dashboard(c *gin.Context) {
 		"TotalBytes": totalBytes,
 		"TotalSpeed": totalSpeed,
 		"RunningJobs": runningJobs,
+		"BytesToday": bytesToday,
+		"Bytes24h":   bytes24h,
 		"RcloneConfig": settings.RcloneConfigPath,
 		"JobsPage":      jobsPage,
 		"JobsPageSize":  jobsPageSize,
@@ -600,6 +608,11 @@ func (s *Server) apiStatsNow(c *gin.Context) {
 		c.Status(http.StatusInternalServerError)
 		return
 	}
+	now := time.Now()
+	todayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	bytesToday, _ := s.st.StatsBytesSince(ctx, todayStart)
+	bytes24h, _ := s.st.StatsBytesSince(ctx, now.Add(-24*time.Hour))
+
 	c.Writer.Header().Set("Content-Type", "application/json; charset=utf-8")
 	_ = json.NewEncoder(c.Writer).Encode(map[string]any{
 		"ts": time.Now().UnixMilli(),
@@ -607,6 +620,8 @@ func (s *Server) apiStatsNow(c *gin.Context) {
 		"bytesTotal": sum.BytesTotal,
 		"speedTotal": sum.SpeedTotal,
 		"runningJobs": sum.RunningJobs,
+		"bytesToday": bytesToday,
+		"bytes24h":   bytes24h,
 	})
 }
 
