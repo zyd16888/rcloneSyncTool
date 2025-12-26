@@ -77,18 +77,19 @@
                         {{end}}
                       </div>
 
-                      {{if .Rule.LimitGroup}}
-                         <div class="mt-2 pt-2 border-t border-base-content/5 flex justify-between items-center text-[10px]">
-                           <span class="badge badge-xs badge-ghost text-[9px]">组: {{.Rule.LimitGroup}}</span>
-                           <span class="{{if ge .Usage24h .GroupLimit}}text-error font-bold{{end}}">{{humanBytes .Usage24h}}{{if gt .GroupLimit 0}} / {{humanBytes .GroupLimit}}{{end}}</span>
-                         </div>
-                      {{else if gt .Usage24h 0}}
+                      {{if gt .Usage24h 0}}
                         <div class="mt-2 pt-2 border-t border-base-content/5 flex justify-between items-center text-[10px]">
                           <span class="opacity-50">24h 流量</span>
-                          <span class="{{if and (gt .Rule.DailyLimitBytes 0) (ge .Usage24h .Rule.DailyLimitBytes)}}text-error font-bold{{end}}">
-                            {{humanBytes .Usage24h}}{{if gt .Rule.DailyLimitBytes 0}} / {{humanBytes .Rule.DailyLimitBytes}}{{end}}
+                          <span class="{{if and (not .Rule.LimitGroup) (gt .Rule.DailyLimitBytes 0) (ge .Usage24h .Rule.DailyLimitBytes)}}text-error font-bold{{end}}">
+                            {{humanBytes .Usage24h}}{{if and (not .Rule.LimitGroup) (gt .Rule.DailyLimitBytes 0)}} / {{humanBytes .Rule.DailyLimitBytes}}{{end}}
                           </span>
                         </div>
+                      {{end}}
+
+                      {{if .Rule.LimitGroup}}
+                         <div class="mt-1 flex justify-end">
+                           <span class="badge badge-xs badge-ghost text-[9px] opacity-70">组: {{.Rule.LimitGroup}}</span>
+                         </div>
                       {{end}}
                     </div>
                   </div>

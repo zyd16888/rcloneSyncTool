@@ -288,39 +288,13 @@ func (s *Server) rulesList(c *gin.Context) {
 		Rule   store.Rule
 		Counts store.FileStateCounts
 		Usage24h int64
-		GroupLimit int64
-	}
-
-	// Pre-calculate group stats to avoid N+1
-	groupUsage := map[string]int64{}
-	groupLimit := map[string]int64{}
-	// First pass: find max limits per group
-	for _, rule := range rules {
-		if rule.LimitGroup != "" {
-			if rule.DailyLimitBytes > groupLimit[rule.LimitGroup] {
-				groupLimit[rule.LimitGroup] = rule.DailyLimitBytes
-			}
-		}
-	}
-	// Second pass: calc usage per group
-	for g := range groupLimit {
-		u, _ := s.st.GroupUsageSince(ctx, g, time.Now().Add(-24*time.Hour))
-		groupUsage[g] = u
 	}
 
 	var rows []ruleRow
 	for _, rule := range rules {
 		counts, _ := s.st.RuleFileCounts(ctx, rule.ID)
-		var usage int64
-		var limit int64
-		if rule.LimitGroup != "" {
-			usage = groupUsage[rule.LimitGroup]
-			limit = groupLimit[rule.LimitGroup]
-		} else {
-			usage, _ = s.st.RuleUsageSince(ctx, rule.ID, time.Now().Add(-24*time.Hour))
-			limit = rule.DailyLimitBytes
-		}
-		rows = append(rows, ruleRow{Rule: rule, Counts: counts, Usage24h: usage, GroupLimit: limit})
+		usage, _ := s.st.RuleUsageSince(ctx, rule.ID, time.Now().Add(-24*time.Hour))
+		rows = append(rows, ruleRow{Rule: rule, Counts: counts, Usage24h: usage})
 	}
 	s.render(c, "rules", map[string]any{
 		"Active": "rules",
