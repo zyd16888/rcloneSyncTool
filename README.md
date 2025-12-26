@@ -125,9 +125,7 @@ echo "新密码" | docker run --rm -i -v "$(pwd)/data:/data" ghcr.io/zyd16888/rc
 - 或者在「系统设置」里填 `rclone_config_path` 指定配置文件路径（非 Docker 场景更常用）
 - 设置完成后点击「检测 rclone」，或打开「远程列表」确认 remotes 正常
 
-## 界面截图（待补充）
-
-把截图放到 `docs/screenshots/`，然后替换下面这些占位图：
+## 界面截图
 
 ![登录/初始化密码](https://github.com/user-attachments/assets/25384944-9f60-4378-a6a7-27dc6a6d7a1a)
 
@@ -135,7 +133,9 @@ echo "新密码" | docker run --rm -i -v "$(pwd)/data:/data" ghcr.io/zyd16888/rc
 
 ![同步规则](https://github.com/user-attachments/assets/e3d2eeff-9201-4777-8576-7c3729957bfb)
 
-![任务列表](https://github.com/user-attachments/assets/e0937da2-1bb4-4337-a004-0db762b86036)
+![任务列表](https://github.com/user-attachments/assets/f73a4ea2-127b-42da-8e7a-5d2cf7372546)
+
+
 
 ## 打包发布（GitHub Actions）
 
