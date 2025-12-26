@@ -204,7 +204,7 @@ func runRcloneJob(ctx context.Context, rule store.Rule, settings store.RuntimeSe
 	args := []string{
 		rule.TransferMode,
 		src, dst,
-		"--files-from", filesFromPath,
+		"--files-from-raw", filesFromPath,
 		"--stats", "0",
 		"--rc",
 		"--rc-no-auth",

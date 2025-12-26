@@ -473,7 +473,9 @@ func (w *ruleWorker) runWithMetrics(ctx context.Context, settings store.RuntimeS
 		args = append(args, "--config", settings.RcloneConfigPath)
 	}
 	if strings.TrimSpace(filesFromPath) != "" {
-		args = append(args, "--files-from", filesFromPath)
+		// Newer rclone versions forbid combining --files-from with any other filter options (e.g. --exclude).
+		// Use --files-from-raw so extension filters and user extra args keep working together.
+		args = append(args, "--files-from-raw", filesFromPath)
 	}
 	if settings.BufferSize != "" {
 		args = append(args, "--buffer-size", settings.BufferSize)
