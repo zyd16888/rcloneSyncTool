@@ -169,7 +169,7 @@ func (s *Server) dashboard(c *gin.Context) {
 		rows = append(rows, ruleRow{Rule: rule, Counts: counts})
 	}
 	jobsPage := atoiDefault(c.Query("jobs_page"), 1)
-	jobsPageSize := normalizePageSize(c.Query("jobs_page_size"), 20)
+	jobsPageSize := normalizePageSize(c.Query("jobs_page_size"), 10)
 	if jobsPage <= 0 {
 		jobsPage = 1
 	}
@@ -448,7 +448,7 @@ func (s *Server) ruleRetryFailedPost(c *gin.Context) {
 func (s *Server) jobsList(c *gin.Context) {
 	ctx := c.Request.Context()
 	page := atoiDefault(c.Query("page"), 1)
-	pageSize := normalizePageSize(c.Query("page_size"), 50)
+	pageSize := normalizePageSize(c.Query("page_size"), 20)
 	if page <= 0 {
 		page = 1
 	}

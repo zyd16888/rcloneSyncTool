@@ -67,14 +67,10 @@
         <span>当前没有运行中的任务，实时曲线将保持空闲状态（当有任务运行时会自动开始绘制）。</span>
       </div>
 
-      <div class="mt-4 space-y-4">
+      <div class="mt-4">
         <div>
           <div class="text-sm opacity-70 mb-2">总速度</div>
-          <canvas id="rtSpeed" style="width:100%; height:220px; border:1px solid hsl(var(--b2)); border-radius:12px;"></canvas>
-        </div>
-        <div>
-          <div class="text-sm opacity-70 mb-2">累计已传输</div>
-          <canvas id="rtBytes" style="width:100%; height:220px; border:1px solid hsl(var(--b2)); border-radius:12px;"></canvas>
+          <canvas id="rtSpeed" style="width:100%; height:260px; border:1px solid hsl(var(--b2)); border-radius:12px;"></canvas>
         </div>
       </div>
     </div>
@@ -251,14 +247,11 @@
     const rtRule = document.getElementById("rtRule");
     const rtWindow = document.getElementById("rtWindow");
     const speedCanvas = document.getElementById("rtSpeed");
-    const bytesCanvas = document.getElementById("rtBytes");
     const emptyBox = document.getElementById("rtEmpty");
-    if (!rtRule || !rtWindow || !speedCanvas || !bytesCanvas) return;
+    if (!rtRule || !rtWindow || !speedCanvas) return;
 
     const speedChart = createLineChart(speedCanvas, { color: "#16baaa" });
-    const bytesChart = createLineChart(bytesCanvas, { color: "#1e9fff" });
     let pointsSpeed = [];
-    let pointsBytes = [];
     let errorStreak = 0;
 
     function canvasFit(canvas) {
@@ -285,7 +278,6 @@
       const windowSec = parseInt(rtWindow.value || "3600", 10);
       const maxPoints = Math.max(10, Math.floor(windowSec * 1000 / intervalMs));
       if (pointsSpeed.length > maxPoints) pointsSpeed = pointsSpeed.slice(pointsSpeed.length - maxPoints);
-      if (pointsBytes.length > maxPoints) pointsBytes = pointsBytes.slice(pointsBytes.length - maxPoints);
     }
 
     async function tick() {
@@ -297,7 +289,6 @@
         errorStreak = 0;
         if (emptyBox) emptyBox.style.display = (d.runningJobs || 0) === 0 ? "" : "none";
         pointsSpeed.push({ x: d.ts, y: d.speedTotal || 0 });
-        pointsBytes.push({ x: d.ts, y: d.bytesTotal || 0 });
         
         // Update realtime stats text
         const elSpeed = document.getElementById("statSpeed");
@@ -309,9 +300,7 @@
 
         capPoints();
         canvasFit(speedCanvas);
-        canvasFit(bytesCanvas);
         speedChart.draw(pointsSpeed, (v) => humanSpeed(v));
-        bytesChart.draw(pointsBytes, (v) => humanBytes(v));
       } catch (e) {
         errorStreak++;
         if (emptyBox && errorStreak >= 3) {
@@ -324,20 +313,15 @@
 
     function reset() {
       pointsSpeed = [];
-      pointsBytes = [];
       canvasFit(speedCanvas);
-      canvasFit(bytesCanvas);
       speedChart.draw(pointsSpeed, (v) => humanSpeed(v));
-      bytesChart.draw(pointsBytes, (v) => humanBytes(v));
     }
 
     rtRule.addEventListener("change", reset);
     rtWindow.addEventListener("change", reset);
     window.addEventListener("resize", () => {
       canvasFit(speedCanvas);
-      canvasFit(bytesCanvas);
       speedChart.draw(pointsSpeed, (v) => humanSpeed(v));
-      bytesChart.draw(pointsBytes, (v) => humanBytes(v));
     });
     reset();
     tick();
