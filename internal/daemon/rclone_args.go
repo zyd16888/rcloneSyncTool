@@ -100,6 +100,35 @@ func SanitizeRcloneArgs(args []string) sanitizedArgs {
 	return sanitizedArgs{Args: out, Blocked: blocked}
 }
 
+// SanitizeRcloneFilterArgs removes filter-related flags that would conflict with --files-from/--files-from-raw.
+// This keeps automatic jobs stable even if user provided extra args include filters.
+func SanitizeRcloneFilterArgs(args []string) sanitizedArgs {
+	var out []string
+	var blocked []string
+	for i := 0; i < len(args); i++ {
+		a := strings.TrimSpace(args[i])
+		if a == "" {
+			continue
+		}
+		key := a
+		hasEq := false
+		if k, _, ok := strings.Cut(a, "="); ok {
+			key = k
+			hasEq = true
+		}
+		keyLower := strings.ToLower(key)
+		if isRcloneFilterKey(keyLower) {
+			blocked = append(blocked, a)
+			if !hasEq && rcloneFilterNeedsValue(keyLower) && i+1 < len(args) {
+				i++
+			}
+			continue
+		}
+		out = append(out, a)
+	}
+	return sanitizedArgs{Args: out, Blocked: blocked}
+}
+
 func optionNeedsValue(keyLower string) bool {
 	switch keyLower {
 	case "--log-file", "--files-from", "--files-from-raw", "--files-from-replace", "--config", "--stats":
@@ -113,3 +142,34 @@ func optionNeedsValue(keyLower string) bool {
 	}
 }
 
+func isRcloneFilterKey(keyLower string) bool {
+	if strings.HasPrefix(keyLower, "--exclude") {
+		return true
+	}
+	if strings.HasPrefix(keyLower, "--include") {
+		return true
+	}
+	if strings.HasPrefix(keyLower, "--filter") {
+		return true
+	}
+	switch keyLower {
+	case "--min-age", "--max-age", "--min-size", "--max-size", "--ignore-size":
+		return true
+	case "--delete-excluded":
+		return true
+	default:
+		return false
+	}
+}
+
+func rcloneFilterNeedsValue(keyLower string) bool {
+	switch keyLower {
+	case "--exclude", "--include", "--filter",
+		"--exclude-from", "--include-from", "--filter-from",
+		"--exclude-if-present", "--include-if-present",
+		"--min-age", "--max-age", "--min-size", "--max-size":
+		return true
+	default:
+		return false
+	}
+}

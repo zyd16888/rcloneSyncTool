@@ -491,14 +491,21 @@ func (w *ruleWorker) runWithMetrics(ctx context.Context, settings store.RuntimeS
 		args = append(args, "--bwlimit", effectiveBwlimit)
 	}
 	if w.rule.MinFileSizeBytes > 0 {
-		args = append(args, "--min-size", fmt.Sprintf("%d", w.rule.MinFileSizeBytes))
+		// When using --files-from/--files-from-raw, rclone forbids combining with any other filter options.
+		// min_file_size is already enforced by our scan/enqueue/claim logic for automatic jobs.
+		if strings.TrimSpace(filesFromPath) == "" {
+			args = append(args, "--min-size", fmt.Sprintf("%d", w.rule.MinFileSizeBytes))
+		}
 	}
-	if rawExts := strings.ReplaceAll(w.rule.IgnoreExtensions, ",", " "); strings.TrimSpace(rawExts) != "" {
-		for _, ext := range strings.Fields(rawExts) {
-			if strings.HasPrefix(ext, ".") && !strings.Contains(ext, "*") {
-				ext = "*" + ext
+	// ignore_extensions is enforced in scan/DB for automatic jobs, so we only pass excludes for manual runs.
+	if strings.TrimSpace(filesFromPath) == "" {
+		if rawExts := strings.ReplaceAll(w.rule.IgnoreExtensions, ",", " "); strings.TrimSpace(rawExts) != "" {
+			for _, ext := range strings.Fields(rawExts) {
+				if strings.HasPrefix(ext, ".") && !strings.Contains(ext, "*") {
+					ext = "*" + ext
+				}
+				args = append(args, "--exclude", ext)
 			}
-			args = append(args, "--exclude", ext)
 		}
 	}
 	if strings.TrimSpace(w.rule.RcloneExtraArgs) != "" {
@@ -507,6 +514,9 @@ func (w *ruleWorker) runWithMetrics(ctx context.Context, settings store.RuntimeS
 			return jobResult{Err: err}
 		}
 		san := SanitizeRcloneArgs(parsed)
+		if strings.TrimSpace(filesFromPath) != "" {
+			san = SanitizeRcloneFilterArgs(san.Args)
+		}
 		args = append(args, san.Args...)
 	}
 

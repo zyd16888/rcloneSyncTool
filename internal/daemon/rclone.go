@@ -230,15 +230,15 @@ func runRcloneJob(ctx context.Context, rule store.Rule, settings store.RuntimeSe
 	if effectiveBwlimit != "" {
 		args = append(args, "--bwlimit", effectiveBwlimit)
 	}
-	if rule.MinFileSizeBytes > 0 {
-		args = append(args, "--min-size", fmt.Sprintf("%d", rule.MinFileSizeBytes))
-	}
 	if strings.TrimSpace(rule.RcloneExtraArgs) != "" {
 		parsed, err := ParseRcloneArgs(rule.RcloneExtraArgs)
 		if err != nil {
 			return rcloneRunResult{Err: err}
 		}
 		san := SanitizeRcloneArgs(parsed)
+		if strings.TrimSpace(filesFromPath) != "" {
+			san = SanitizeRcloneFilterArgs(san.Args)
+		}
 		args = append(args, san.Args...)
 	}
 
