@@ -63,3 +63,32 @@ func (s *Store) DeleteLimitGroup(ctx context.Context, name string) error {
 	_, err := s.db.ExecContext(ctx, `DELETE FROM limit_groups WHERE name=?`, name)
 	return err
 }
+
+func (s *Store) SetRulesForLimitGroup(ctx context.Context, groupName string, ruleIDs []string) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	// 1. Remove this group from all rules that currently have it (reset to empty)
+	if _, err := tx.ExecContext(ctx, `UPDATE rules SET limit_group='' WHERE limit_group=?`, groupName); err != nil {
+		return err
+	}
+
+	// 2. Set this group for the provided rule IDs
+	if len(ruleIDs) > 0 {
+		// Prepare a query with placeholders
+		query := `UPDATE rules SET limit_group=? WHERE id IN (?` + strings.Repeat(",?", len(ruleIDs)-1) + `)`
+		args := make([]any, len(ruleIDs)+1)
+		args[0] = groupName
+		for i, id := range ruleIDs {
+			args[i+1] = id
+		}
+		if _, err := tx.ExecContext(ctx, query, args...); err != nil {
+			return err
+		}
+	}
+
+	return tx.Commit()
+}

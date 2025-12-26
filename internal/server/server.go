@@ -372,9 +372,21 @@ func (s *Server) ruleEditGet(c *gin.Context) {
 func (s *Server) limitGroupsList(c *gin.Context) {
 	ctx := c.Request.Context()
 	groups, _ := s.st.ListLimitGroups(ctx)
+	rules, _ := s.st.ListRules(ctx)
+	
+	// Map group -> []ruleID for JS pre-filling
+	groupRulesMap := map[string][]string{}
+	for _, r := range rules {
+		if r.LimitGroup != "" {
+			groupRulesMap[r.LimitGroup] = append(groupRulesMap[r.LimitGroup], r.ID)
+		}
+	}
+
 	s.render(c, "limit_groups", map[string]any{
-		"Active": "rules", // Keep under 'rules' menu or make new active
+		"Active": "rules", 
 		"Groups": groups,
+		"Rules": rules,
+		"GroupRulesMap": groupRulesMap,
 	})
 }
 
@@ -385,14 +397,23 @@ func (s *Server) limitGroupsSavePost(c *gin.Context) {
 		c.String(http.StatusBadRequest, "流量限制格式错误：%v", err)
 		return
 	}
+	name := strings.TrimSpace(c.PostForm("name"))
 	g := store.LimitGroup{
-		Name:            c.PostForm("name"),
+		Name:            name,
 		DailyLimitBytes: limit,
 	}
 	if err := s.st.UpsertLimitGroup(ctx, g); err != nil {
 		c.String(http.StatusBadRequest, err.Error())
 		return
 	}
+	
+	// Update associated rules
+	ruleIDs := c.PostFormArray("rule_ids")
+	if err := s.st.SetRulesForLimitGroup(ctx, name, ruleIDs); err != nil {
+		log.Printf("failed to update rules for group %s: %v", name, err)
+		// continue, don't fail the whole request
+	}
+
 	s.redirect(c, "/limit_groups")
 }
 
