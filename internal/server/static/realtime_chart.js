@@ -2,22 +2,40 @@ function createLineChart(canvas, opts) {
   const options = opts || {};
   const padding = options.padding || 36;
   const color = options.color || "#16baaa";
-  const grid = options.grid || "rgba(0,0,0,0.08)";
-  const text = options.text || "rgba(0,0,0,0.55)";
-  const bg = options.bg || "#ffffff";
+
+  function theme() {
+    const t = (document.documentElement.getAttribute("data-theme") || "").toLowerCase();
+    return t === "dark" ? "dark" : "light";
+  }
+
+  function resolveColors() {
+    if (theme() === "dark") {
+      return {
+        grid: options.grid || "rgba(255,255,255,0.12)",
+        text: options.text || "rgba(255,255,255,0.65)",
+        bg: options.bg || "rgba(0,0,0,0)",
+      };
+    }
+    return {
+      grid: options.grid || "rgba(0,0,0,0.08)",
+      text: options.text || "rgba(0,0,0,0.55)",
+      bg: options.bg || "rgba(0,0,0,0)",
+    };
+  }
 
   const ctx = canvas.getContext("2d");
 
   function draw(points, formatter) {
+    const colors = resolveColors();
     const w = canvas.width;
     const h = canvas.height;
     ctx.clearRect(0, 0, w, h);
 
-    ctx.fillStyle = bg;
+    ctx.fillStyle = colors.bg;
     ctx.fillRect(0, 0, w, h);
 
     if (!points || points.length < 2) {
-      ctx.fillStyle = text;
+      ctx.fillStyle = colors.text;
       ctx.font = "12px sans-serif";
       ctx.fillText("暂无数据", padding, padding);
       return;
@@ -40,7 +58,7 @@ function createLineChart(canvas, opts) {
     const yToPx = (y) => padding + (maxY - y) * plotH / Math.max(1e-9, (maxY - minY));
 
     // grid
-    ctx.strokeStyle = grid;
+    ctx.strokeStyle = colors.grid;
     ctx.lineWidth = 1;
     ctx.beginPath();
     for (let i = 0; i <= 4; i++) {
@@ -51,7 +69,7 @@ function createLineChart(canvas, opts) {
     ctx.stroke();
 
     // axes labels (min/max)
-    ctx.fillStyle = text;
+    ctx.fillStyle = colors.text;
     ctx.font = "12px sans-serif";
     const fmt = formatter || ((v) => String(v));
     ctx.fillText(fmt(maxY), 6, padding + 4);
@@ -77,4 +95,3 @@ function createLineChart(canvas, opts) {
 
   return { draw };
 }
-

@@ -13,18 +13,34 @@
 
   <div class="card bg-base-100 border border-base-200">
     <div class="card-body">
-      <div class="overflow-x-auto">
-        <table class="table table-sm">
-          <thead>
-            <tr><th>名称</th></tr>
-          </thead>
-          <tbody>
-            {{range .Remotes}}
-            <tr class="hover:bg-base-200/40"><td>{{.}}</td></tr>
-            {{end}}
-          </tbody>
-        </table>
-      </div>
+      {{if .Remotes}}
+        <div class="overflow-x-auto">
+          <table class="table table-sm">
+            <thead>
+              <tr><th>名称</th></tr>
+            </thead>
+            <tbody>
+              {{range .Remotes}}
+              <tr class="hover:bg-base-200/40"><td>{{.}}</td></tr>
+              {{end}}
+            </tbody>
+          </table>
+        </div>
+      {{else}}
+        <div class="app-empty">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="opacity:.35">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M7.5 18.75h9a4.5 4.5 0 0 0 .8-8.93A5.25 5.25 0 0 0 7.1 8.6 4.5 4.5 0 0 0 7.5 18.75Z" />
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75h6M9 15.75h4.5" opacity=".5" />
+          </svg>
+          <div>
+            <div class="app-empty-title">暂无 remote</div>
+            <div class="app-empty-desc">请先在「rclone 配置」里写入/修正配置文件，然后刷新本页。</div>
+          </div>
+          <div class="app-empty-actions">
+            <a class="btn btn-info text-info-content" href="/rclone/config">打开 rclone 配置</a>
+          </div>
+        </div>
+      {{end}}
     </div>
   </div>
 </div>

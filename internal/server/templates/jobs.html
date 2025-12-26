@@ -61,77 +61,99 @@
 
       <div class="divider my-4"></div>
 
-      <div class="overflow-x-auto">
-        <table class="table table-sm">
-          <thead>
-            <tr>
-              <th>任务 ID</th>
-              <th>规则</th>
-              <th>模式</th>
-              <th>状态</th>
-              <th>开始</th>
-              <th>结束</th>
-              <th>已传输</th>
-              <th>速度</th>
-              <th>错误</th>
-              <th>操作</th>
-            </tr>
-          </thead>
-          <tbody>
-            {{range .Jobs}}
-            <tr class="hover:bg-base-200/40">
-              <td><a class="link" href="/jobs/view?id={{.Job.JobID}}">{{.Job.JobID}}</a></td>
-              <td>{{if hasPrefix .Job.RuleID "manual_"}}手动运行{{else}}{{.Job.RuleID}}{{end}}</td>
-              <td>{{.Job.TransferMode}}</td>
-              <td>
-                <span class="badge {{if eq .Job.Status "running"}}badge-success{{else if eq .Job.Status "failed"}}badge-error{{else if eq .Job.Status "terminated"}}badge-warning{{else}}badge-info{{end}}">{{.Job.Status}}</span>
-              </td>
-              <td class="opacity-70">{{ts .Job.StartedAt}}</td>
-              <td class="opacity-70">{{ts .Job.EndedAt}}</td>
-              <td class="opacity-70">{{if .HasM}}{{humanBytes .Metric.Bytes}}{{else}}{{humanBytes .Job.BytesDone}}{{end}}</td>
-              <td class="opacity-70">{{if .HasM}}{{humanSpeed .Metric.Speed}}{{else}}{{humanSpeed .Job.AvgSpeed}}{{end}}</td>
-              <td class="opacity-70" style="max-width: 320px; word-break: break-word;">{{.Job.Error}}</td>
-              <td>
-                {{if eq .Job.Status "running"}}
-                  <form class="inline" method="post" action="/jobs/terminate" onsubmit="return confirm('确定要终止该任务吗？');">
-                    <input type="hidden" name="id" value="{{.Job.JobID}}">
-                    <input type="hidden" name="next" value="{{$.SelfURL}}">
-                    <button class="btn btn-error btn-xs" type="submit">终止</button>
-                  </form>
-                {{else}}
-                  <span class="opacity-70">-</span>
-                {{end}}
-              </td>
-            </tr>
-            {{end}}
-          </tbody>
-        </table>
-      </div>
-
-      <div class="mt-4 flex flex-wrap gap-2 items-center justify-between">
-        <div class="text-sm opacity-70">共 {{.Total}} 条，页大小 {{.PageSize}}，第 {{.Page}} / {{.TotalPages}} 页</div>
-        <div class="flex flex-wrap gap-2 items-center">
-          <form method="get" action="/jobs" class="flex flex-wrap gap-2 items-center">
-            <input type="hidden" name="page_size" value="{{.PageSize}}">
-            <input type="hidden" name="rule_id" value="{{.F.RuleID}}">
-            <input type="hidden" name="status" value="{{.F.Status}}">
-            <input type="hidden" name="mode" value="{{.F.TransferMode}}">
-            <input type="hidden" name="q" value="{{.F.Query}}">
-            <input type="number" min="1" max="{{.TotalPages}}" name="page" value="{{.Page}}" class="input input-bordered input-sm w-28" placeholder="跳转页码">
-            <button class="btn btn-sm" type="submit">跳转</button>
-          </form>
-          {{if .HasPrev}}
-            <a class="btn btn-ghost btn-sm" href="{{.PrevURL}}">上一页</a>
-          {{else}}
-            <button class="btn btn-ghost btn-sm" disabled>上一页</button>
-          {{end}}
-          {{if .HasNext}}
-            <a class="btn btn-ghost btn-sm" href="{{.NextURL}}">下一页</a>
-          {{else}}
-            <button class="btn btn-ghost btn-sm" disabled>下一页</button>
-          {{end}}
+      {{if .Jobs}}
+        <div class="overflow-x-auto">
+          <table class="table table-sm">
+            <thead>
+              <tr>
+                <th>任务 ID</th>
+                <th>规则</th>
+                <th>模式</th>
+                <th>状态</th>
+                <th>开始</th>
+                <th>结束</th>
+                <th>已传输</th>
+                <th>速度</th>
+                <th>错误</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              {{range .Jobs}}
+              <tr class="hover:bg-base-200/40">
+                <td><a class="link" href="/jobs/view?id={{.Job.JobID}}">{{.Job.JobID}}</a></td>
+                <td>{{if hasPrefix .Job.RuleID "manual_"}}手动运行{{else}}{{.Job.RuleID}}{{end}}</td>
+                <td>{{.Job.TransferMode}}</td>
+                <td>
+                  <span class="badge {{if eq .Job.Status "running"}}badge-success{{else if eq .Job.Status "failed"}}badge-error{{else if eq .Job.Status "terminated"}}badge-warning{{else}}badge-info{{end}}">{{.Job.Status}}</span>
+                </td>
+                <td class="opacity-70">{{ts .Job.StartedAt}}</td>
+                <td class="opacity-70">{{ts .Job.EndedAt}}</td>
+                <td class="opacity-70">{{if .HasM}}{{humanBytes .Metric.Bytes}}{{else}}{{humanBytes .Job.BytesDone}}{{end}}</td>
+                <td class="opacity-70">{{if .HasM}}{{humanSpeed .Metric.Speed}}{{else}}{{humanSpeed .Job.AvgSpeed}}{{end}}</td>
+                <td class="opacity-70" style="max-width: 320px; word-break: break-word;">{{.Job.Error}}</td>
+                <td>
+                  {{if eq .Job.Status "running"}}
+                    <form class="inline" method="post" action="/jobs/terminate" onsubmit="return confirm('确定要终止该任务吗？');">
+                      <input type="hidden" name="id" value="{{.Job.JobID}}">
+                      <input type="hidden" name="next" value="{{$.SelfURL}}">
+                      <button class="btn btn-error btn-xs" type="submit">终止</button>
+                    </form>
+                  {{else}}
+                    <span class="opacity-70">-</span>
+                  {{end}}
+                </td>
+              </tr>
+              {{end}}
+            </tbody>
+          </table>
         </div>
-      </div>
+
+        <div class="mt-4 flex flex-wrap gap-2 items-center justify-between">
+          <div class="text-sm opacity-70">共 {{.Total}} 条，页大小 {{.PageSize}}，第 {{.Page}} / {{.TotalPages}} 页</div>
+          <div class="flex flex-wrap gap-2 items-center">
+            <form method="get" action="/jobs" class="flex flex-wrap gap-2 items-center">
+              <input type="hidden" name="page_size" value="{{.PageSize}}">
+              <input type="hidden" name="rule_id" value="{{.F.RuleID}}">
+              <input type="hidden" name="status" value="{{.F.Status}}">
+              <input type="hidden" name="mode" value="{{.F.TransferMode}}">
+              <input type="hidden" name="q" value="{{.F.Query}}">
+              <input type="number" min="1" max="{{.TotalPages}}" name="page" value="{{.Page}}" class="input input-bordered input-sm w-28" placeholder="跳转页码">
+              <button class="btn btn-sm" type="submit">跳转</button>
+            </form>
+            {{if .HasPrev}}
+              <a class="btn btn-ghost btn-sm" href="{{.PrevURL}}">上一页</a>
+            {{else}}
+              <button class="btn btn-ghost btn-sm" disabled>上一页</button>
+            {{end}}
+            {{if .HasNext}}
+              <a class="btn btn-ghost btn-sm" href="{{.NextURL}}">下一页</a>
+            {{else}}
+              <button class="btn btn-ghost btn-sm" disabled>下一页</button>
+            {{end}}
+          </div>
+        </div>
+      {{else}}
+        <div class="app-empty">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="opacity:.35">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 6.75h12M8.25 12h12M8.25 17.25h12" />
+            <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 6.75h.01M4.5 12h.01M4.5 17.25h.01" />
+          </svg>
+          <div>
+            {{if or .F.RuleID .F.Status .F.TransferMode .F.Query}}
+              <div class="app-empty-title">暂无匹配结果</div>
+              <div class="app-empty-desc">请调整筛选条件，或点击「重置」查看所有任务。</div>
+            {{else}}
+              <div class="app-empty-title">暂无任务记录</div>
+              <div class="app-empty-desc">当规则触发或手动运行后，任务会出现在这里。</div>
+            {{end}}
+          </div>
+          <div class="app-empty-actions">
+            <a class="btn btn-info text-info-content" href="/manual">手动运行</a>
+            <a class="btn btn-ghost" href="/rules">查看规则</a>
+          </div>
+        </div>
+      {{end}}
     </div>
   </div>
 </div>

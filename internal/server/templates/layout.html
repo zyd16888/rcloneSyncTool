@@ -4,9 +4,49 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <script>
+      (() => {
+        try {
+          const theme = localStorage.getItem("ui.theme");
+          if (theme === "dark" || theme === "winter") {
+            document.documentElement.setAttribute("data-theme", theme);
+          }
+        } catch (e) { /* ignore */ }
+
+        try {
+          const collapsed = localStorage.getItem("ui.sidebarCollapsed");
+          if (collapsed === "1") {
+            document.documentElement.classList.add("sidebar-collapsed");
+          }
+        } catch (e) { /* ignore */ }
+      })();
+    </script>
     <title>rclone 同步管理台</title>
     <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
     <link rel="stylesheet" href="/static/app.css">
+    <style>
+      .app-sidebar{background-color:var(--fallback-b2,oklch(var(--b2)/1));color:var(--fallback-bc,oklch(var(--bc)/1));transition:width .15s ease;overflow-x:hidden}
+      .app-sidebar-brand{min-width:0}
+      .app-sidebar-label{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+      .app-nav-link{display:flex;align-items:center;gap:.75rem}
+      .app-sidebar-toggle svg{transition:transform .15s ease;transform-origin:50% 50%}
+      .app-empty{padding:3rem 1rem;display:flex;flex-direction:column;align-items:center;gap:1rem;text-align:center}
+      .app-empty svg{width:160px;height:160px}
+      .app-empty-title{font-weight:700;font-size:1.125rem}
+      .app-empty-desc{opacity:.7;font-size:.875rem}
+      .app-empty-actions{display:flex;gap:.5rem;flex-wrap:wrap;justify-content:center}
+
+      .app-sidebar-toggle{display:none}
+      @media (min-width:1024px){
+        .app-sidebar-toggle{display:inline-flex}
+        html.sidebar-collapsed .app-sidebar{width:5rem}
+        html.sidebar-collapsed .app-sidebar-label{display:none}
+        html.sidebar-collapsed .app-sidebar-footer{display:none}
+        html.sidebar-collapsed .app-nav-link{justify-content:center;gap:0}
+        html.sidebar-collapsed .app-sidebar-brand{justify-content:center}
+        html.sidebar-collapsed .app-sidebar-toggle svg{transform:rotate(180deg)}
+      }
+    </style>
   </head>
   <body class="bg-base-100">
     <div class="drawer lg:drawer-open">
@@ -29,6 +69,17 @@
               rclone 同步管理台
             </a>
           </div>
+          <div class="flex-none">
+            <button id="btnThemeToggle" class="btn btn-square btn-ghost" type="button" aria-label="切换深色模式" title="切换深色模式">
+              <svg id="iconThemeSun" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" class="h-5 w-5">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 18a6 6 0 1 0 0-12 6 6 0 0 0 0 12Z" />
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 2v2.5M12 19.5V22M4.22 4.22 6 6M18 18l1.78 1.78M2 12h2.5M19.5 12H22M4.22 19.78 6 18M18 6l1.78-1.78" />
+              </svg>
+              <svg id="iconThemeMoon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" class="h-5 w-5" style="display:none">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M21 12.8A8.5 8.5 0 0 1 11.2 3a7 7 0 1 0 9.8 9.8Z" />
+              </svg>
+            </button>
+          </div>
         </div>
 
         <main class="p-4 md:p-6">
@@ -49,34 +100,134 @@
 
       <div class="drawer-side">
         <label for="app-drawer" class="drawer-overlay"></label>
-        <aside class="w-72 min-h-full bg-slate-800 text-slate-100 border-r border-slate-700">
-          <div class="h-14 min-h-14 px-4 flex items-center border-b border-slate-700">
-            <a class="flex items-center gap-2 font-bold" href="/">
+        <aside class="app-sidebar w-72 min-h-full border-r border-base-200">
+          <div class="h-14 min-h-14 px-4 flex items-center justify-between border-b border-base-200">
+            <a class="flex items-center gap-2 font-bold app-sidebar-brand" href="/" title="rclone 同步管理台">
               <img src="/static/favicon.svg" class="h-5 w-5" alt="icon">
-              <span>rclone 同步管理台</span>
+              <span class="app-sidebar-label">rclone 同步管理台</span>
             </a>
+            <button id="btnSidebarToggle" class="btn btn-square btn-ghost btn-sm app-sidebar-toggle" type="button" aria-label="收起/展开侧栏" title="收起/展开侧栏">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" class="h-5 w-5">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M9 18 3 12l6-6" />
+                <path stroke-linecap="round" stroke-linejoin="round" d="M21 12H4" />
+              </svg>
+            </button>
           </div>
           <ul class="menu p-3 text-sm">
-            <li><a class="{{if eq .Active "dashboard"}}bg-slate-700 text-white{{else}}text-slate-200 hover:bg-slate-700 hover:text-white{{end}}" href="/">概览</a></li>
-            <li><a class="{{if eq .Active "remotes"}}bg-slate-700 text-white{{else}}text-slate-200 hover:bg-slate-700 hover:text-white{{end}}" href="/remotes">远程列表</a></li>
-            <li><a class="{{if eq .Active "rclone_config"}}bg-slate-700 text-white{{else}}text-slate-200 hover:bg-slate-700 hover:text-white{{end}}" href="/rclone/config">rclone 配置</a></li>
-            <li><a class="{{if eq .Active "rules"}}bg-slate-700 text-white{{else}}text-slate-200 hover:bg-slate-700 hover:text-white{{end}}" href="/rules">同步规则</a></li>
-            <li><a class="{{if eq .Active "jobs"}}bg-slate-700 text-white{{else}}text-slate-200 hover:bg-slate-700 hover:text-white{{end}}" href="/jobs">任务列表</a></li>
-            <li><a class="{{if eq .Active "logs"}}bg-slate-700 text-white{{else}}text-slate-200 hover:bg-slate-700 hover:text-white{{end}}" href="/logs">日志</a></li>
-            <li><a class="{{if eq .Active "settings"}}bg-slate-700 text-white{{else}}text-slate-200 hover:bg-slate-700 hover:text-white{{end}}" href="/settings">系统设置</a></li>
+            <li>
+              <a class="app-nav-link {{if eq .Active "dashboard"}}active{{end}}" href="/" title="概览">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" class="h-5 w-5" aria-hidden="true">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 12.75V6.75A3 3 0 0 1 6.75 3.75h3.5a3 3 0 0 1 3 3v16.5H6.75a3 3 0 0 1-3-3v-7.5Z" />
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M13.25 8.25h4A3 3 0 0 1 20.25 11.25v9A3 3 0 0 1 17.25 23.25h-4V8.25Z" opacity=".25" />
+                </svg>
+                <span class="app-sidebar-label">概览</span>
+              </a>
+            </li>
+            <li>
+              <a class="app-nav-link {{if eq .Active "remotes"}}active{{end}}" href="/remotes" title="远程列表">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" class="h-5 w-5" aria-hidden="true">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M7.5 18.75h9a4.5 4.5 0 0 0 .8-8.93A5.25 5.25 0 0 0 7.1 8.6 4.5 4.5 0 0 0 7.5 18.75Z" />
+                </svg>
+                <span class="app-sidebar-label">远程列表</span>
+              </a>
+            </li>
+            <li>
+              <a class="app-nav-link {{if eq .Active "rclone_config"}}active{{end}}" href="/rclone/config" title="rclone 配置">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" class="h-5 w-5" aria-hidden="true">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M6 9.75V6.75A3 3 0 0 1 9 3.75h6a3 3 0 0 1 3 3v3" />
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M6 14.25v3A3 3 0 0 0 9 20.25h6a3 3 0 0 0 3-3v-3" />
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 12h7.5" />
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M12 8.25v7.5" opacity=".35" />
+                </svg>
+                <span class="app-sidebar-label">rclone 配置</span>
+              </a>
+            </li>
+            <li>
+              <a class="app-nav-link {{if eq .Active "rules"}}active{{end}}" href="/rules" title="同步规则">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" class="h-5 w-5" aria-hidden="true">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M7.5 7.5h9m-9 9h9" />
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M6 4.5 3.75 7.5 6 10.5" />
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M18 13.5l2.25 3L18 19.5" />
+                </svg>
+                <span class="app-sidebar-label">同步规则</span>
+              </a>
+            </li>
+            <li>
+              <a class="app-nav-link {{if eq .Active "jobs"}}active{{end}}" href="/jobs" title="任务列表">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" class="h-5 w-5" aria-hidden="true">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 6.75h12M8.25 12h12M8.25 17.25h12" />
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 6.75h.01M4.5 12h.01M4.5 17.25h.01" />
+                </svg>
+                <span class="app-sidebar-label">任务列表</span>
+              </a>
+            </li>
+            <li>
+              <a class="app-nav-link {{if eq .Active "logs"}}active{{end}}" href="/logs" title="日志">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" class="h-5 w-5" aria-hidden="true">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M7.5 3.75h6l3 3V20.25a3 3 0 0 1-3 3H7.5a3 3 0 0 1-3-3V6.75a3 3 0 0 1 3-3Z" />
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 12h7.5M8.25 15.75h7.5M8.25 8.25h3.75" opacity=".35" />
+                </svg>
+                <span class="app-sidebar-label">日志</span>
+              </a>
+            </li>
+            <li>
+              <a class="app-nav-link {{if eq .Active "settings"}}active{{end}}" href="/settings" title="系统设置">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" class="h-5 w-5" aria-hidden="true">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M10.5 6.75 12 3l1.5 3.75M6.75 10.5 3 12l3.75 1.5M17.25 10.5 21 12l-3.75 1.5M10.5 17.25 12 21l1.5-3.75" />
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M12 15.75a3.75 3.75 0 1 0 0-7.5 3.75 3.75 0 0 0 0 7.5Z" />
+                </svg>
+                <span class="app-sidebar-label">系统设置</span>
+              </a>
+            </li>
             <li>
               <form method="post" action="/logout">
-                <button class="text-slate-200 hover:bg-slate-700 hover:text-white w-full text-left px-4 py-2 rounded" type="submit">退出登录</button>
+                <button class="app-nav-link" type="submit" title="退出登录">
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" class="h-5 w-5" aria-hidden="true">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M10.5 7.5V6.75A3 3 0 0 1 13.5 3.75h3A3 3 0 0 1 19.5 6.75v10.5a3 3 0 0 1-3 3h-3a3 3 0 0 1-3-3v-.75" />
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 12h9m0 0-3-3m3 3-3 3" />
+                  </svg>
+                  <span class="app-sidebar-label">退出登录</span>
+                </button>
               </form>
             </li>
           </ul>
-          <div class="p-4 text-xs text-slate-200/80">
+          <div class="app-sidebar-footer p-4 text-xs opacity-70">
             本地 Web 管理台（默认仅监听 127.0.0.1）。<br>
             支持任意 rclone remote → remote，以及 local → remote；每个任务独立 RC 端口，统计不会混入系统其他 rclone 任务。
           </div>
         </aside>
       </div>
     </div>
+    <script>
+      (() => {
+        const root = document.documentElement;
+
+        const sun = document.getElementById("iconThemeSun");
+        const moon = document.getElementById("iconThemeMoon");
+        const themeBtn = document.getElementById("btnThemeToggle");
+
+        const getTheme = () => root.getAttribute("data-theme") || "winter";
+        const setTheme = (theme, persist) => {
+          root.setAttribute("data-theme", theme);
+          if (sun) sun.style.display = theme === "dark" ? "none" : "";
+          if (moon) moon.style.display = theme === "dark" ? "" : "none";
+          if (persist) {
+            try { localStorage.setItem("ui.theme", theme); } catch (e) { /* ignore */ }
+          }
+        };
+
+        setTheme(getTheme(), false);
+        themeBtn?.addEventListener("click", () => {
+          setTheme(getTheme() === "dark" ? "winter" : "dark", true);
+        });
+
+        const sidebarBtn = document.getElementById("btnSidebarToggle");
+        sidebarBtn?.addEventListener("click", () => {
+          const collapsed = root.classList.toggle("sidebar-collapsed");
+          try { localStorage.setItem("ui.sidebarCollapsed", collapsed ? "1" : "0"); } catch (e) { /* ignore */ }
+        });
+      })();
+    </script>
   </body>
 </html>
 {{end}}

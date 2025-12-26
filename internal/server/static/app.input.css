@@ -4,3 +4,88 @@
 
 html, body { height: 100%; }
 
+/* App UI additions (mirrored inline in layout.html for prebuilt CSS). */
+.app-sidebar {
+  background-color: var(--fallback-b2, oklch(var(--b2)/1));
+  color: var(--fallback-bc, oklch(var(--bc)/1));
+  transition: width 150ms ease;
+  overflow-x: hidden;
+}
+
+.app-sidebar-brand {
+  min-width: 0;
+}
+
+.app-sidebar-label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.app-nav-link {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.app-empty {
+  padding: 3rem 1rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  text-align: center;
+}
+
+.app-empty svg {
+  width: 160px;
+  height: 160px;
+}
+
+.app-empty-title {
+  font-weight: 700;
+  font-size: 1.125rem;
+}
+
+.app-empty-desc {
+  opacity: 0.7;
+  font-size: 0.875rem;
+}
+
+.app-empty-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.app-sidebar-toggle {
+  display: none;
+}
+
+@media (min-width: 1024px) {
+  .app-sidebar-toggle {
+    display: inline-flex;
+  }
+
+  html.sidebar-collapsed .app-sidebar {
+    width: 5rem;
+  }
+
+  html.sidebar-collapsed .app-sidebar-label {
+    display: none;
+  }
+
+  html.sidebar-collapsed .app-sidebar-footer {
+    display: none;
+  }
+
+  html.sidebar-collapsed .app-nav-link {
+    justify-content: center;
+    gap: 0;
+  }
+
+  html.sidebar-collapsed .app-sidebar-brand {
+    justify-content: center;
+  }
+}
