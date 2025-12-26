@@ -5,6 +5,20 @@
     <div class="text-sm opacity-70">不创建同步队列，直接启动一次 rclone 任务（copy/move）；运行记录会出现在任务列表中</div>
   </div>
 
+  <div class="card bg-base-100 border border-base-200">
+    <div class="card-body py-3">
+      <div class="flex items-center gap-2">
+        <span class="text-sm font-bold">从现有规则导入配置：</span>
+        <select class="select select-bordered select-sm w-full max-w-xs" onchange="if(this.value) window.location.href='/manual?copy_from_id='+encodeURIComponent(this.value);">
+          <option value="">-- 请选择规则 --</option>
+          {{range .Rules}}
+            <option value="{{.ID}}" {{if eq .ID $.Rule.ID}}selected{{end}}>{{.ID}}</option>
+          {{end}}
+        </select>
+      </div>
+    </div>
+  </div>
+
   {{if .Error}}
   <div class="alert alert-warning">
     <span><b>提示：</b>{{.Error}} 你仍可手动输入 remote 名称，但运行时 rclone 必须能解析到该 remote。</span>
@@ -18,15 +32,15 @@
           <label class="form-control">
             <div class="label"><span class="label-text">源类型</span></div>
             <select name="src_kind" id="srcKind" class="select select-bordered">
-              <option value="remote" selected>remote（远端）</option>
-              <option value="local">local（本地目录）</option>
+              <option value="remote" {{if ne .Rule.SrcKind "local"}}selected{{end}}>remote（远端）</option>
+              <option value="local" {{if eq .Rule.SrcKind "local"}}selected{{end}}>local（本地目录）</option>
             </select>
           </label>
           <label class="form-control">
             <div class="label"><span class="label-text">模式</span></div>
             <select name="transfer_mode" class="select select-bordered">
-              <option value="copy" selected>copy（不删除源端）</option>
-              <option value="move">move（成功后删除源端）</option>
+              <option value="copy" {{if ne .Rule.TransferMode "move"}}selected{{end}}>copy（不删除源端）</option>
+              <option value="move" {{if eq .Rule.TransferMode "move"}}selected{{end}}>move（成功后删除源端）</option>
             </select>
           </label>
         </div>
@@ -34,29 +48,29 @@
         <div id="srcRemoteFields" class="grid grid-cols-1 md:grid-cols-2 gap-4">
           <label class="form-control">
             <div class="label"><span class="label-text">源端 remote</span></div>
-            <input type="text" id="srcRemote" name="src_remote" list="remoteList" autocomplete="off" class="input input-bordered" placeholder="例如：src">
+            <input type="text" id="srcRemote" name="src_remote" list="remoteList" autocomplete="off" class="input input-bordered" placeholder="例如：src" value="{{.Rule.SrcRemote}}">
           </label>
           <label class="form-control">
             <div class="label"><span class="label-text">src_path</span></div>
-            <input type="text" id="srcPath" name="src_path" placeholder="/Source/A" autocomplete="off" class="input input-bordered" list="srcPathList">
+            <input type="text" id="srcPath" name="src_path" placeholder="/Source/A" autocomplete="off" class="input input-bordered" list="srcPathList" value="{{.Rule.SrcPath}}">
           </label>
         </div>
 
         <div id="srcLocalFields" class="grid grid-cols-1 md:grid-cols-2 gap-4" style="display:none">
           <label class="form-control md:col-span-2">
             <div class="label"><span class="label-text">本地目录</span></div>
-            <input type="text" id="srcLocalRoot" name="src_local_root" placeholder="例如：D:\\data\\watch 或 /data/watch" autocomplete="off" class="input input-bordered" list="localPathList">
+            <input type="text" id="srcLocalRoot" name="src_local_root" placeholder="例如：D:\\data\\watch 或 /data/watch" autocomplete="off" class="input input-bordered" list="localPathList" value="{{.Rule.SrcLocalRoot}}">
           </label>
         </div>
 
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
           <label class="form-control">
             <div class="label"><span class="label-text">目标端 remote</span></div>
-            <input type="text" id="dstRemote" name="dst_remote" list="remoteList" autocomplete="off" class="input input-bordered" placeholder="例如：dst">
+            <input type="text" id="dstRemote" name="dst_remote" list="remoteList" autocomplete="off" class="input input-bordered" placeholder="例如：dst" value="{{.Rule.DstRemote}}">
           </label>
           <label class="form-control">
             <div class="label"><span class="label-text">dst_path</span></div>
-            <input type="text" id="dstPath" name="dst_path" placeholder="/Backup/A" autocomplete="off" class="input input-bordered" list="dstPathList">
+            <input type="text" id="dstPath" name="dst_path" placeholder="/Backup/A" autocomplete="off" class="input input-bordered" list="dstPathList" value="{{.Rule.DstPath}}">
           </label>
         </div>
 
@@ -70,19 +84,19 @@
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
           <label class="form-control">
             <div class="label"><span class="label-text">限速</span></div>
-            <input type="text" name="bwlimit" class="input input-bordered" placeholder="例如：8M / 1.5M / 0 / 留空">
+            <input type="text" name="bwlimit" class="input input-bordered" placeholder="例如：8M / 1.5M / 0 / 留空" value="{{.Rule.Bwlimit}}">
             <div class="label"><span class="label-text-alt opacity-70">对应 rclone 的 <code>--bwlimit</code>；留空使用系统默认。</span></div>
           </label>
           <label class="form-control">
             <div class="label"><span class="label-text">最小文件</span></div>
-            <input type="text" name="min_file_size" class="input input-bordered" placeholder="例如：10M / 1.5G / 0 / 留空">
+            <input type="text" name="min_file_size" class="input input-bordered" placeholder="例如：10M / 1.5G / 0 / 留空" value="{{if gt .Rule.MinFileSizeBytes 0}}{{humanBytes .Rule.MinFileSizeBytes}}{{end}}">
             <div class="label"><span class="label-text-alt opacity-70">小于该大小的文件不会传输（等同 rclone <code>--min-size</code>）。</span></div>
           </label>
         </div>
 
         <label class="form-control">
           <div class="label"><span class="label-text">自定义参数(可选)（rclone）</span></div>
-          <textarea name="rclone_extra_args" rows="3" class="textarea textarea-bordered font-mono text-xs w-full" style="border:1px solid rgba(187, 197, 211, 0.35);padding:.75rem 1rem;border-radius:.5rem;" placeholder='例如：--exclude "*.tmp" --drive-acknowledge-abuse'></textarea>
+          <textarea name="rclone_extra_args" rows="3" class="textarea textarea-bordered font-mono text-xs w-full" style="border:1px solid rgba(187, 197, 211, 0.35);padding:.75rem 1rem;border-radius:.5rem;" placeholder='例如：--exclude "*.tmp" --drive-acknowledge-abuse'>{{.Rule.RcloneExtraArgs}}</textarea>
           <div class="label">
             <span class="label-text-alt opacity-70">仅对 copy/move 生效；支持引号；会自动屏蔽 <code>--rc*</code>/<code>--stats*</code>/<code>--log-file</code>/<code>--files-from</code>/<code>--config</code> 等参数。</span>
           </div>

@@ -55,6 +55,7 @@
                   <input type="hidden" name="id" value="{{.Rule.ID}}">
                   <button class="btn btn-ghost btn-xs" type="submit">重试失败</button>
                 </form>
+                <a class="btn btn-ghost btn-xs" href="/rules/edit?copy_from_id={{.Rule.ID}}">复制</a>
                 <form class="inline" method="post" action="/rules/toggle">
                   <input type="hidden" name="id" value="{{.Rule.ID}}">
                   <input type="hidden" name="enabled" value="{{if .Rule.Enabled}}0{{else}}1{{end}}">

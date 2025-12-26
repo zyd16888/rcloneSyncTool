@@ -258,13 +258,22 @@ func (s *Server) rulesList(c *gin.Context) {
 func (s *Server) ruleEditGet(c *gin.Context) {
 	ctx := c.Request.Context()
 	id := strings.TrimSpace(c.Query("id"))
+	copyFromID := strings.TrimSpace(c.Query("copy_from_id"))
+
 	var rule store.Rule
 	if id != "" {
 		if got, ok, _ := s.st.GetRule(ctx, id); ok {
 			rule = got
 		}
+	} else if copyFromID != "" {
+		if got, ok, _ := s.st.GetRule(ctx, copyFromID); ok {
+			rule = got
+			rule.ID = ""       // Force new ID
+			rule.Enabled = false // Default to disabled for safety
+		}
 	}
-	if rule.ID == "" {
+
+	if rule.ID == "" && copyFromID == "" { // Only apply defaults if not copying
 		rule.Enabled = true
 		rule.SrcKind = "remote"
 		rule.LocalWatch = true
@@ -275,20 +284,40 @@ func (s *Server) ruleEditGet(c *gin.Context) {
 		rule.BatchSize = 100
 	}
 	remotes, err := s.listRcloneRemotes(ctx)
+	rules, _ := s.st.ListRules(ctx)
 	s.render(c, "rule_edit", map[string]any{
 		"Active":  "rules",
 		"Rule":    rule,
 		"Remotes": remotes,
+		"Rules":   rules,
 		"Error":   errString(err),
 	})
 }
 
 func (s *Server) manualGet(c *gin.Context) {
 	ctx := c.Request.Context()
+	copyFromID := strings.TrimSpace(c.Query("copy_from_id"))
+	var rule store.Rule
+	if copyFromID != "" {
+		if got, ok, _ := s.st.GetRule(ctx, copyFromID); ok {
+			rule = got
+		}
+	}
+	// Defaults if empty
+	if rule.TransferMode == "" {
+		rule.TransferMode = "copy"
+	}
+	if rule.SrcKind == "" {
+		rule.SrcKind = "remote"
+	}
+
 	remotes, err := s.listRcloneRemotes(ctx)
+	rules, _ := s.st.ListRules(ctx)
 	s.render(c, "manual", map[string]any{
 		"Active":  "rules",
 		"Remotes": remotes,
+		"Rule":    rule,
+		"Rules":   rules,
 		"Error":   errString(err),
 	})
 }

@@ -13,6 +13,16 @@
 
   <div class="card bg-base-100 border border-base-200">
     <div class="card-body">
+      <div class="flex items-center gap-2 mb-4">
+        <span class="text-sm font-bold">从现有规则导入配置：</span>
+        <select class="select select-bordered select-sm w-full max-w-xs" onchange="if(this.value) window.location.href='/rules/edit?copy_from_id='+encodeURIComponent(this.value);">
+          <option value="">-- 请选择规则 --</option>
+          {{range .Rules}}
+            <option value="{{.ID}}" {{if eq .ID $.Rule.ID}}selected{{end}}>{{.ID}}</option>
+          {{end}}
+        </select>
+      </div>
+
       <form method="post" action="/rules/save" class="space-y-4">
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
           <label class="form-control">
