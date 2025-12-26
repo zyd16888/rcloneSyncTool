@@ -15,9 +15,9 @@
   <div class="card bg-base-100 border border-base-200">
     <div class="card-body p-0">
       {{if .Rules}}
-        <div class="overflow-auto max-h-[650px] relative rounded-xl">
+        <div class="overflow-visible relative rounded-xl">
           <table class="table table-sm w-full border-separate border-spacing-0">
-            <thead class="sticky top-0 bg-base-100 z-[20] shadow-sm">
+            <thead class="sticky top-14 bg-base-100 z-[20] shadow-sm"> {{/* Top-14 corresponds to navbar height */}}
               <tr>
                 <th class="w-16 bg-base-100 border-b border-base-200">ID</th>
                 <th class="w-16 bg-base-100 border-b border-base-200">状态</th>
@@ -48,10 +48,10 @@
                   </form>
                 </td>
                 <td class="align-top max-w-[200px] lg:max-w-[300px] pt-4">
-                  <div class="flex flex-col gap-1">
+                  <div class="flex flex-col gap-1 text-left">
                     <div class="flex items-center gap-1 text-xs opacity-50">
-                      <span class="badge badge-xs badge-outline">{{.Rule.TransferMode}}</span>
-                      {{if eq .Rule.SrcKind "local"}}<span class="badge badge-xs badge-ghost">Local Watch: {{if .Rule.LocalWatch}}ON{{else}}OFF{{end}}</span>{{end}}
+                      <span class="badge badge-xs badge-outline uppercase">{{.Rule.TransferMode}}</span>
+                      {{if eq .Rule.SrcKind "local"}}<span class="badge badge-xs badge-ghost">Watch: {{if .Rule.LocalWatch}}ON{{else}}OFF{{end}}</span>{{end}}
                     </div>
                     <div class="text-sm font-medium truncate" title="{{if eq .Rule.SrcKind "local"}}{{.Rule.SrcLocalRoot}}{{else}}{{.Rule.SrcRemote}}:{{.Rule.SrcPath}}{{end}}">
                       {{if eq .Rule.SrcKind "local"}}
@@ -60,7 +60,7 @@
                         <span class="opacity-70">☁️</span> {{.Rule.SrcRemote}}:<span class="opacity-70">{{.Rule.SrcPath}}</span>
                       {{end}}
                     </div>
-                    <div class="text-xs opacity-50 text-center w-6">↓</div>
+                    <div class="text-xs opacity-50 w-6 text-center">↓</div>
                     <div class="text-sm truncate" title="{{.Rule.DstRemote}}:{{.Rule.DstPath}}">
                       <span class="opacity-70">☁️</span> {{.Rule.DstRemote}}:<span class="opacity-70">{{.Rule.DstPath}}</span>
                     </div>
@@ -77,23 +77,23 @@
                     </div>
                     
                     <div class="p-2 bg-base-200/50 rounded border border-base-200 w-full max-w-sm">
-                      <div class="grid grid-cols-2 gap-x-6 gap-y-1">
-                        <div class="flex justify-between items-center opacity-80"><span class="opacity-60">🆕 新发现</span> <span class="font-mono">{{.Counts.New}}</span></div>
-                        <div class="flex justify-between items-center opacity-80"><span class="opacity-60">⏳ 排队中</span> <span class="font-mono">{{.Counts.Queued}}</span></div>
-                        <div class="flex justify-between items-center {{if gt .Counts.Transferring 0}}text-primary font-bold{{else}}opacity-80{{end}}"><span class="opacity-60">▶️ 传输中</span> <span class="font-mono">{{.Counts.Transferring}}</span></div>
-                        <div class="flex justify-between items-center opacity-80"><span class="opacity-60">✅ 已完成</span> <span class="font-mono">{{.Counts.Done}}</span></div>
+                      <div class="flex flex-wrap gap-x-4 gap-y-1 text-[11px]">
+                        <div class="flex items-center gap-1.5 opacity-80"><span class="opacity-60">🆕 新发现</span><span class="font-bold font-mono">{{.Counts.New}}</span></div>
+                        <div class="flex items-center gap-1.5 opacity-80"><span class="opacity-60">⏳ 排队中</span><span class="font-bold font-mono">{{.Counts.Queued}}</span></div>
+                        <div class="flex items-center gap-1.5 {{if gt .Counts.Transferring 0}}text-primary{{else}}opacity-80{{end}}"><span class="opacity-60">▶️ 传输中</span><span class="font-bold font-mono">{{.Counts.Transferring}}</span></div>
+                        <div class="flex items-center gap-1.5 opacity-80"><span class="opacity-60">✅ 已完成</span><span class="font-bold font-mono">{{.Counts.Done}}</span></div>
                         {{if gt .Counts.Failed 0}}
-                        <div class="flex justify-between items-center text-error font-bold col-span-2 border-t border-base-content/5 mt-1 pt-1"><span class="opacity-60">❌ 失败</span> <span>{{.Counts.Failed}}</span></div>
+                          <div class="flex items-center gap-1.5 text-error w-full mt-0.5 border-t border-base-content/5 pt-0.5"><span class="opacity-60">❌ 失败</span><span class="font-bold font-mono">{{.Counts.Failed}}</span></div>
                         {{end}}
                       </div>
 
                       {{if .Rule.LimitGroup}}
-                         <div class="mt-2 pt-2 border-t border-base-content/5 flex justify-between items-center text-[10px] sm:text-xs">
-                           <span class="badge badge-xs badge-ghost">组: {{.Rule.LimitGroup}}</span>
+                         <div class="mt-2 pt-2 border-t border-base-content/5 flex justify-between items-center text-[10px]">
+                           <span class="badge badge-xs badge-ghost text-[9px]">组: {{.Rule.LimitGroup}}</span>
                            <span class="{{if ge .Usage24h .GroupLimit}}text-error font-bold{{end}}">{{humanBytes .Usage24h}}{{if gt .GroupLimit 0}} / {{humanBytes .GroupLimit}}{{end}}</span>
                          </div>
                       {{else if gt .Usage24h 0}}
-                        <div class="mt-2 pt-2 border-t border-base-content/5 flex justify-between items-center text-[10px] sm:text-xs">
+                        <div class="mt-2 pt-2 border-t border-base-content/5 flex justify-between items-center text-[10px]">
                           <span class="opacity-50">24h 流量</span>
                           <span class="{{if and (gt .Rule.DailyLimitBytes 0) (ge .Usage24h .Rule.DailyLimitBytes)}}text-error font-bold{{end}}">
                             {{humanBytes .Usage24h}}{{if gt .Rule.DailyLimitBytes 0}} / {{humanBytes .Rule.DailyLimitBytes}}{{end}}
@@ -122,7 +122,7 @@
                       </div>
                       <ul tabindex="0" class="dropdown-content z-[100] menu p-2 shadow-2xl bg-base-100 rounded-box w-40 text-sm border border-base-200 mr-2">
                         <li>
-                          <form method="post" action="/rules/retry_failed" class="w-full p-0">
+                          <form method="post" action="/rules/retry_failed" class="p-0">
                             <input type="hidden" name="id" value="{{.Rule.ID}}">
                             <button type="submit" class="flex gap-2 w-full px-4 py-2 hover:bg-base-200 rounded-lg">
                               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4">
@@ -142,7 +142,7 @@
                         </li>
                         <div class="divider my-1 opacity-20"></div>
                         <li>
-                          <form method="post" action="/rules/delete" onsubmit="return confirm('确定要删除该规则吗？');" class="w-full p-0">
+                          <form method="post" action="/rules/delete" onsubmit="return confirm('确定要删除该规则吗？');" class="p-0">
                             <input type="hidden" name="id" value="{{.Rule.ID}}">
                             <button type="submit" class="flex gap-2 w-full px-4 py-2 text-error hover:bg-error/10 rounded-lg">
                               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4 text-error">
