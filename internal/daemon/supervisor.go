@@ -112,6 +112,7 @@ func (s *Supervisor) reconcile(ctx context.Context) {
 
 func ruleSame(a, b store.Rule) bool {
 	return a.ID == b.ID &&
+		a.LimitGroup == b.LimitGroup &&
 		a.SrcKind == b.SrcKind &&
 		a.SrcRemote == b.SrcRemote &&
 		a.SrcPath == b.SrcPath &&
@@ -120,7 +121,10 @@ func ruleSame(a, b store.Rule) bool {
 		a.DstRemote == b.DstRemote &&
 		a.DstPath == b.DstPath &&
 		a.TransferMode == b.TransferMode &&
+		a.RcloneExtraArgs == b.RcloneExtraArgs &&
+		a.IgnoreExtensions == b.IgnoreExtensions &&
 		a.Bwlimit == b.Bwlimit &&
+		a.DailyLimitBytes == b.DailyLimitBytes &&
 		a.MinFileSizeBytes == b.MinFileSizeBytes &&
 		a.IsManual == b.IsManual &&
 		a.MaxParallelJobs == b.MaxParallelJobs &&

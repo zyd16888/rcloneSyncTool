@@ -59,6 +59,7 @@ func scanRule(ctx context.Context, rule store.Rule, settings store.RuntimeSettin
 		return nil, errors.New("unexpected lsjson output")
 	}
 
+	ignoreExts := store.ParseIgnoreExtensions(rule.IgnoreExtensions)
 	var out []store.ScanEntry
 	for dec.More() {
 		var e lsjsonEntry
@@ -72,6 +73,19 @@ func scanRule(ctx context.Context, rule store.Rule, settings store.RuntimeSettin
 		p = strings.ReplaceAll(p, "\\", "/")
 		if p == "" {
 			continue
+		}
+		if len(ignoreExts) > 0 {
+			lp := strings.ToLower(p)
+			ignored := false
+			for _, ext := range ignoreExts {
+				if strings.HasSuffix(lp, ext) {
+					ignored = true
+					break
+				}
+			}
+			if ignored {
+				continue
+			}
 		}
 		mt, err := time.Parse(time.RFC3339Nano, e.ModTime)
 		if err != nil {

@@ -4,6 +4,7 @@ import (
 	"context"
 	// "database/sql"
 	"errors"
+	"strings"
 	"time"
 )
 
@@ -111,6 +112,30 @@ ON CONFLICT(rule_id, path) DO UPDATE SET
 DELETE FROM files
 WHERE rule_id=? AND size < ? AND state IN ('new','stable','queued','failed')
 `, rule.ID, rule.MinFileSizeBytes); err != nil {
+			return err
+		}
+	}
+
+	// When ignore_extensions is changed after running for a while, old rows may remain in queue.
+	// Delete ignored extensions for non-transferring states so they won't be written into files-from.
+	if exts := ParseIgnoreExtensions(rule.IgnoreExtensions); len(exts) > 0 {
+		var b strings.Builder
+		b.WriteString(`
+DELETE FROM files
+WHERE rule_id=? AND state IN ('new','stable','queued','failed') AND (`)
+		args := make([]any, 0, 1+len(exts)*2)
+		args = append(args, rule.ID)
+		for i, ext := range exts {
+			if i > 0 {
+				b.WriteString(" OR ")
+			}
+			// strict suffix match (case-insensitive via LOWER)
+			b.WriteString("substr(LOWER(path), ?) = ?")
+			args = append(args, -len(ext), ext)
+		}
+		b.WriteString(")\n")
+
+		if _, err := tx.ExecContext(ctx, b.String(), args...); err != nil {
 			return err
 		}
 	}
