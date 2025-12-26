@@ -1,0 +1,88 @@
+{{define "content"}}
+<div class="space-y-4">
+  <div>
+    <h1 class="text-xl font-bold">限流分组管理</h1>
+    <div class="text-sm opacity-70">创建分组并在规则中引用，可实现多规则共享流量配额。</div>
+  </div>
+
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+    <!-- List -->
+    <div class="card bg-base-100 border border-base-200">
+      <div class="card-body">
+        <h2 class="card-title text-base">分组列表</h2>
+        {{if .Groups}}
+        <div class="overflow-x-auto">
+          <table class="table table-sm">
+            <thead>
+              <tr>
+                <th>名称</th>
+                <th>每日限制</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              {{range .Groups}}
+              <tr class="hover:bg-base-200/40">
+                <td class="font-bold">{{.Name}}</td>
+                <td>{{if gt .DailyLimitBytes 0}}{{humanBytes .DailyLimitBytes}}{{else}}不限{{end}}</td>
+                <td>
+                  <button class="btn btn-xs btn-ghost" onclick="editGroup('{{.Name}}', '{{if gt .DailyLimitBytes 0}}{{humanBytes .DailyLimitBytes}}{{else}}0{{end}}')">编辑</button>
+                  <form method="post" action="/limit_groups/delete" class="inline" onsubmit="return confirm('确定删除分组 {{.Name}} 吗？关联该分组的规则将变为无分组限制。');">
+                    <input type="hidden" name="name" value="{{.Name}}">
+                    <button class="btn btn-xs btn-error btn-ghost" type="submit">删除</button>
+                  </form>
+                </td>
+              </tr>
+              {{end}}
+            </tbody>
+          </table>
+        </div>
+        {{else}}
+        <div class="text-sm opacity-50 py-4 text-center">暂无分组</div>
+        {{end}}
+      </div>
+    </div>
+
+    <!-- Edit/Create -->
+    <div class="card bg-base-100 border border-base-200 h-fit">
+      <div class="card-body">
+        <h2 class="card-title text-base" id="formTitle">新建/编辑分组</h2>
+        <form method="post" action="/limit_groups/save" class="space-y-4">
+          <label class="form-control">
+            <div class="label"><span class="label-text">分组名称</span></div>
+            <input type="text" id="nameInput" name="name" class="input input-bordered" placeholder="例如：gdrive_main" required>
+            <div class="label"><span class="label-text-alt opacity-70">唯一标识，不支持修改名称（如需修改请删除重建）。</span></div>
+          </label>
+          <label class="form-control">
+            <div class="label"><span class="label-text">每日流量限制</span></div>
+            <input type="text" id="limitInput" name="daily_limit" class="input input-bordered" placeholder="例如：750G / 0">
+            <div class="label"><span class="label-text-alt opacity-70">例如：750G。填 0 或留空表示不限制。</span></div>
+          </label>
+          <div class="flex gap-2 justify-end">
+            <button type="button" class="btn btn-ghost" onclick="resetForm()">重置</button>
+            <button type="submit" class="btn btn-primary">保存</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+function editGroup(name, limit) {
+  document.getElementById('formTitle').innerText = "编辑分组: " + name;
+  const nameInput = document.getElementById('nameInput');
+  nameInput.value = name;
+  nameInput.readOnly = true;
+  document.getElementById('limitInput').value = limit;
+}
+
+function resetForm() {
+  document.getElementById('formTitle').innerText = "新建/编辑分组";
+  const nameInput = document.getElementById('nameInput');
+  nameInput.value = "";
+  nameInput.readOnly = false;
+  document.getElementById('limitInput').value = "";
+}
+</script>
+{{end}}

@@ -220,6 +220,16 @@ WHERE rule_id=? AND path=? AND state='queued'
 	return paths, tx.Commit()
 }
 
+func (s *Store) GetJobFilesSize(ctx context.Context, jobID string) (int64, error) {
+	var n int64
+	err := s.db.QueryRowContext(ctx, `
+SELECT COALESCE(SUM(size), 0)
+FROM files
+WHERE job_id=?
+`, jobID).Scan(&n)
+	return n, err
+}
+
 func (s *Store) MarkJobFiles(ctx context.Context, jobID, state string, errMsg string) error {
 	if state != "done" && state != "failed" {
 		return errors.New("invalid file state: " + state)

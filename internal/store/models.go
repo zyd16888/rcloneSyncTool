@@ -9,6 +9,12 @@ import (
 	"time"
 )
 
+type LimitGroup struct {
+	Name            string
+	DailyLimitBytes int64
+	UpdatedAt       time.Time
+}
+
 type Remote struct {
 	Name       string
 	Type       string
@@ -54,6 +60,7 @@ func (r *Remote) UnmarshalConfig() error {
 
 type Rule struct {
 	ID              string
+	LimitGroup      string
 	SrcKind         string
 	SrcRemote       string
 	SrcPath         string
@@ -64,6 +71,7 @@ type Rule struct {
 	TransferMode    string
 	RcloneExtraArgs string
 	Bwlimit         string
+	DailyLimitBytes int64
 	MinFileSizeBytes int64
 	IsManual        bool
 	MaxParallelJobs int
@@ -77,6 +85,7 @@ type Rule struct {
 
 func (r *Rule) Normalize() error {
 	r.ID = strings.TrimSpace(r.ID)
+	r.LimitGroup = strings.TrimSpace(r.LimitGroup)
 	r.SrcKind = strings.TrimSpace(strings.ToLower(r.SrcKind))
 	if r.SrcKind == "" {
 		r.SrcKind = "remote"
@@ -100,6 +109,9 @@ func (r *Rule) Normalize() error {
 	r.Bwlimit = strings.TrimSpace(r.Bwlimit)
 	if r.MinFileSizeBytes < 0 {
 		r.MinFileSizeBytes = 0
+	}
+	if r.DailyLimitBytes < 0 {
+		r.DailyLimitBytes = 0
 	}
 	if r.ID == "" {
 		return errors.New("rule id required")

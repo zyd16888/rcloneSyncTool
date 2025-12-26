@@ -173,6 +173,42 @@ func (w *ruleWorker) startOneJob(scanCtx context.Context, jobCtx context.Context
 	if !w.st.HasQueued(scanCtx, w.rule.ID) {
 		return
 	}
+
+	limitBytes := w.rule.DailyLimitBytes
+	usageFn := func() (int64, error) {
+		return w.st.RuleUsageSince(scanCtx, w.rule.ID, time.Now().Add(-24*time.Hour))
+	}
+	// If grouped, use group logic
+	if w.rule.LimitGroup != "" {
+		lg, ok, err := w.st.GetLimitGroup(scanCtx, w.rule.LimitGroup)
+		if err != nil {
+			log.Printf("rule %s: get limit group: %v", w.rule.ID, err)
+			return
+		}
+		if ok {
+			limitBytes = lg.DailyLimitBytes
+		} else {
+			// Group not found? fallback to rule's limit or 0?
+			// Let's assume 0 (unlimited) or log warning.
+			// Ideally the UI prevents selecting non-existent groups, but user can delete group.
+			limitBytes = 0 
+		}
+
+		usageFn = func() (int64, error) {
+			return w.st.GroupUsageSince(scanCtx, w.rule.LimitGroup, time.Now().Add(-24*time.Hour))
+		}
+	}
+
+	if limitBytes > 0 {
+		usage, err := usageFn()
+		if err != nil {
+			log.Printf("rule %s: check usage: %v", w.rule.ID, err)
+		} else if usage >= limitBytes {
+			// Limit reached.
+			return
+		}
+	}
+
 	if w.gl != nil {
 		if ok := w.gl.Acquire(scanCtx); !ok {
 			return
@@ -195,6 +231,23 @@ func (w *ruleWorker) startOneJob(scanCtx context.Context, jobCtx context.Context
 	if len(paths) == 0 {
 		return
 	}
+
+	// Pre-check limit with estimated size
+	if limitBytes > 0 {
+		jobSize, err := w.st.GetJobFilesSize(jobCtx, jobID)
+		if err == nil {
+			currentUsage, _ := usageFn()
+			if currentUsage+jobSize > limitBytes {
+				log.Printf("rule %s: daily limit exceeded (usage: %d, job: %d, limit: %d), skipping job %s", 
+					w.rule.ID, currentUsage, jobSize, limitBytes, jobID)
+				_ = w.st.ReleaseTransferringBackToQueued(jobCtx, jobID)
+				return
+			}
+		} else {
+			log.Printf("rule %s: check job size: %v", w.rule.ID, err)
+		}
+	}
+
 	log.Printf("[Worker] Job %s (Rule: %s) starting with %d files", jobID, w.rule.ID, len(paths))
 	if w.stopped.Load() || scanCtx.Err() != nil {
 		_ = w.st.ReleaseTransferringBackToQueued(jobCtx, jobID)

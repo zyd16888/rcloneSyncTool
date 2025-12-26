@@ -109,6 +109,10 @@ func New(st *store.Store, supervisor *daemon.Supervisor, logDir string, appLogPa
 	r.POST("/rules/scan", s.ruleScanPost)
 	r.POST("/rules/retry_failed", s.ruleRetryFailedPost)
 
+	r.GET("/limit_groups", s.limitGroupsList)
+	r.POST("/limit_groups/save", s.limitGroupsSavePost)
+	r.POST("/limit_groups/delete", s.limitGroupsDeletePost)
+
 	r.GET("/manual", s.manualGet)
 	r.POST("/manual/start", s.manualStartPost)
 
@@ -159,14 +163,36 @@ func (s *Server) redirect(c *gin.Context, p string) {
 func (s *Server) dashboard(c *gin.Context) {
 	ctx := c.Request.Context()
 	rules, _ := s.st.ListRules(ctx)
+		// Pre-calculate group stats to avoid N+1
+		groupUsage := map[string]int64{}
+		groupLimit := map[string]int64{}
+		
+	lgs, _ := s.st.ListLimitGroups(ctx)
+	for _, lg := range lgs {
+		groupLimit[lg.Name] = lg.DailyLimitBytes
+		u, _ := s.st.GroupUsageSince(ctx, lg.Name, time.Now().Add(-24*time.Hour))
+		groupUsage[lg.Name] = u
+	}
+
 	type ruleRow struct {
 		Rule   store.Rule
 		Counts store.FileStateCounts
+		Usage24h int64
+		GroupLimit int64
 	}
 	var rows []ruleRow
 	for _, rule := range rules {
 		counts, _ := s.st.RuleFileCounts(ctx, rule.ID)
-		rows = append(rows, ruleRow{Rule: rule, Counts: counts})
+		var usage int64
+		var limit int64
+		if rule.LimitGroup != "" {
+			usage = groupUsage[rule.LimitGroup]
+			limit = groupLimit[rule.LimitGroup]
+		} else {
+			usage, _ = s.st.RuleUsageSince(ctx, rule.ID, time.Now().Add(-24*time.Hour))
+			limit = rule.DailyLimitBytes
+		}
+		rows = append(rows, ruleRow{Rule: rule, Counts: counts, Usage24h: usage, GroupLimit: limit})
 	}
 	jobsPage := atoiDefault(c.Query("jobs_page"), 1)
 	jobsPageSize := normalizePageSize(c.Query("jobs_page_size"), 10)
@@ -202,6 +228,23 @@ func (s *Server) dashboard(c *gin.Context) {
 	bytesToday, _ := s.st.StatsBytesSince(ctx, todayStart)
 	bytes24h, _ := s.st.StatsBytesSince(ctx, now.Add(-24*time.Hour))
 
+	// Limit Groups Summary
+	type groupStat struct {
+		Name  string
+		Usage int64
+		Limit int64
+	}
+	var groupStats []groupStat
+	lgs, _ = s.st.ListLimitGroups(ctx)
+	for _, lg := range lgs {
+		usage, _ := s.st.GroupUsageSince(ctx, lg.Name, now.Add(-24*time.Hour))
+		groupStats = append(groupStats, groupStat{
+			Name:  lg.Name,
+			Usage: usage,
+			Limit: lg.DailyLimitBytes,
+		})
+	}
+
 	settings, _ := s.st.RuntimeSettings(ctx)
 	hasPrev := jobsPage > 1
 	hasNext := jobsPage < totalPages
@@ -215,6 +258,7 @@ func (s *Server) dashboard(c *gin.Context) {
 		"RunningJobs": runningJobs,
 		"BytesToday": bytesToday,
 		"Bytes24h":   bytes24h,
+		"LimitGroups": groupStats,
 		"RcloneConfig": settings.RcloneConfigPath,
 		"JobsPage":      jobsPage,
 		"JobsPageSize":  jobsPageSize,
@@ -243,11 +287,40 @@ func (s *Server) rulesList(c *gin.Context) {
 	type ruleRow struct {
 		Rule   store.Rule
 		Counts store.FileStateCounts
+		Usage24h int64
+		GroupLimit int64
 	}
+
+	// Pre-calculate group stats to avoid N+1
+	groupUsage := map[string]int64{}
+	groupLimit := map[string]int64{}
+	// First pass: find max limits per group
+	for _, rule := range rules {
+		if rule.LimitGroup != "" {
+			if rule.DailyLimitBytes > groupLimit[rule.LimitGroup] {
+				groupLimit[rule.LimitGroup] = rule.DailyLimitBytes
+			}
+		}
+	}
+	// Second pass: calc usage per group
+	for g := range groupLimit {
+		u, _ := s.st.GroupUsageSince(ctx, g, time.Now().Add(-24*time.Hour))
+		groupUsage[g] = u
+	}
+
 	var rows []ruleRow
 	for _, rule := range rules {
 		counts, _ := s.st.RuleFileCounts(ctx, rule.ID)
-		rows = append(rows, ruleRow{Rule: rule, Counts: counts})
+		var usage int64
+		var limit int64
+		if rule.LimitGroup != "" {
+			usage = groupUsage[rule.LimitGroup]
+			limit = groupLimit[rule.LimitGroup]
+		} else {
+			usage, _ = s.st.RuleUsageSince(ctx, rule.ID, time.Now().Add(-24*time.Hour))
+			limit = rule.DailyLimitBytes
+		}
+		rows = append(rows, ruleRow{Rule: rule, Counts: counts, Usage24h: usage, GroupLimit: limit})
 	}
 	s.render(c, "rules", map[string]any{
 		"Active": "rules",
@@ -285,13 +358,48 @@ func (s *Server) ruleEditGet(c *gin.Context) {
 	}
 	remotes, err := s.listRcloneRemotes(ctx)
 	rules, _ := s.st.ListRules(ctx)
+	limitGroups, _ := s.st.ListLimitGroups(ctx)
 	s.render(c, "rule_edit", map[string]any{
 		"Active":  "rules",
 		"Rule":    rule,
 		"Remotes": remotes,
 		"Rules":   rules,
+		"LimitGroups": limitGroups,
 		"Error":   errString(err),
 	})
+}
+
+func (s *Server) limitGroupsList(c *gin.Context) {
+	ctx := c.Request.Context()
+	groups, _ := s.st.ListLimitGroups(ctx)
+	s.render(c, "limit_groups", map[string]any{
+		"Active": "rules", // Keep under 'rules' menu or make new active
+		"Groups": groups,
+	})
+}
+
+func (s *Server) limitGroupsSavePost(c *gin.Context) {
+	ctx := c.Request.Context()
+	limit, err := parseSizeBytes(c.PostForm("daily_limit"))
+	if err != nil {
+		c.String(http.StatusBadRequest, "流量限制格式错误：%v", err)
+		return
+	}
+	g := store.LimitGroup{
+		Name:            c.PostForm("name"),
+		DailyLimitBytes: limit,
+	}
+	if err := s.st.UpsertLimitGroup(ctx, g); err != nil {
+		c.String(http.StatusBadRequest, err.Error())
+		return
+	}
+	s.redirect(c, "/limit_groups")
+}
+
+func (s *Server) limitGroupsDeletePost(c *gin.Context) {
+	ctx := c.Request.Context()
+	_ = s.st.DeleteLimitGroup(ctx, c.PostForm("name"))
+	s.redirect(c, "/limit_groups")
 }
 
 func (s *Server) manualGet(c *gin.Context) {
@@ -399,6 +507,11 @@ func (s *Server) ruleSavePost(c *gin.Context) {
 		c.String(http.StatusBadRequest, "最小文件大小格式错误：%v（示例：10M / 1.5G / 0 / 留空）", err)
 		return
 	}
+	dailyLimit, err := parseSizeBytes(c.PostForm("daily_limit"))
+	if err != nil {
+		c.String(http.StatusBadRequest, "每日流量限制格式错误：%v（示例：750G / 0 / 留空）", err)
+		return
+	}
 	if strings.TrimSpace(c.PostForm("rclone_extra_args")) != "" {
 		if _, err := daemon.ParseRcloneArgs(c.PostForm("rclone_extra_args")); err != nil {
 			c.String(http.StatusBadRequest, err.Error())
@@ -407,6 +520,7 @@ func (s *Server) ruleSavePost(c *gin.Context) {
 	}
 	rule := store.Rule{
 		ID:              c.PostForm("id"),
+		LimitGroup:      strings.TrimSpace(c.PostForm("limit_group")),
 		SrcKind:         c.PostForm("src_kind"),
 		SrcRemote:       c.PostForm("src_remote"),
 		SrcPath:         c.PostForm("src_path"),
@@ -417,6 +531,7 @@ func (s *Server) ruleSavePost(c *gin.Context) {
 		TransferMode:    c.PostForm("transfer_mode"),
 		RcloneExtraArgs: c.PostForm("rclone_extra_args"),
 		Bwlimit:         c.PostForm("bwlimit"),
+		DailyLimitBytes: dailyLimit,
 		MinFileSizeBytes: minSize,
 		MaxParallelJobs: atoiDefault(c.PostForm("max_parallel_jobs"), 1),
 		ScanIntervalSec: atoiDefault(c.PostForm("scan_interval_sec"), 15),

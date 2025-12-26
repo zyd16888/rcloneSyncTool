@@ -53,6 +53,7 @@ CREATE TABLE IF NOT EXISTS remotes (
 
 CREATE TABLE IF NOT EXISTS rules (
   id TEXT PRIMARY KEY,
+  limit_group TEXT NOT NULL DEFAULT '',
   src_kind TEXT NOT NULL DEFAULT 'remote',
   src_remote TEXT NOT NULL,
   src_path TEXT NOT NULL,
@@ -63,6 +64,7 @@ CREATE TABLE IF NOT EXISTS rules (
   transfer_mode TEXT NOT NULL DEFAULT 'copy',
   rclone_extra_args TEXT NOT NULL DEFAULT '',
   bwlimit TEXT NOT NULL DEFAULT '',
+  daily_limit_bytes INTEGER NOT NULL DEFAULT 0,
   min_file_size_bytes INTEGER NOT NULL DEFAULT 0,
   is_manual INTEGER NOT NULL DEFAULT 0,
   max_parallel_jobs INTEGER NOT NULL DEFAULT 1,
@@ -121,6 +123,12 @@ CREATE TABLE IF NOT EXISTS job_metrics (
   FOREIGN KEY (job_id) REFERENCES jobs(job_id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS limit_groups (
+  name TEXT PRIMARY KEY,
+  daily_limit_bytes INTEGER NOT NULL DEFAULT 0,
+  updated_at INTEGER NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS settings (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL,
@@ -147,7 +155,13 @@ CREATE TABLE IF NOT EXISTS settings (
 	if err := s.ensureRuleColumn(ctx, "bwlimit", "TEXT NOT NULL DEFAULT ''"); err != nil {
 		return err
 	}
+	if err := s.ensureRuleColumn(ctx, "daily_limit_bytes", "INTEGER NOT NULL DEFAULT 0"); err != nil {
+		return err
+	}
 	if err := s.ensureRuleColumn(ctx, "min_file_size_bytes", "INTEGER NOT NULL DEFAULT 0"); err != nil {
+		return err
+	}
+	if err := s.ensureRuleColumn(ctx, "limit_group", "TEXT NOT NULL DEFAULT ''"); err != nil {
 		return err
 	}
 	if err := s.ensureRuleColumn(ctx, "is_manual", "INTEGER NOT NULL DEFAULT 0"); err != nil {

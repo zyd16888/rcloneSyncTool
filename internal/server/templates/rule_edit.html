@@ -118,6 +118,49 @@
           </label>
 
           <label class="form-control">
+            <div class="label"><span class="label-text">每日流量限制</span></div>
+            <input type="text" id="dailyLimitInput" name="daily_limit" value="{{if gt .Rule.DailyLimitBytes 0}}{{.Rule.DailyLimitBytes}}{{end}}" class="input input-bordered" placeholder="例如：750G / 0 / 留空">
+            <div class="label"><span class="label-text-alt opacity-70">单日传输上限（0为不限）。<span id="limitHint"></span></span></div>
+          </label>
+
+          <label class="form-control">
+            <div class="label">
+              <span class="label-text">限流分组 (可选)</span>
+              <a href="/limit_groups" target="_blank" class="label-text-alt link link-primary">管理分组</a>
+            </div>
+            <select name="limit_group" id="limitGroupSelect" class="select select-bordered" onchange="updateLimitHint()">
+              <option value="">-- 不使用分组 --</option>
+              {{range .LimitGroups}}
+                <option value="{{.Name}}" data-limit="{{.DailyLimitBytes}}" {{if eq .Name $.Rule.LimitGroup}}selected{{end}}>{{.Name}} ({{if gt .DailyLimitBytes 0}}{{humanBytes .DailyLimitBytes}}{{else}}不限{{end}})</option>
+              {{end}}
+            </select>
+            <div class="label"><span class="label-text-alt opacity-70">选择分组后，将忽略本规则的“每日流量限制”，改用分组配额。</span></div>
+          </label>
+
+          <script>
+            function updateLimitHint() {
+              const sel = document.getElementById('limitGroupSelect');
+              const input = document.getElementById('dailyLimitInput');
+              const hint = document.getElementById('limitHint');
+              if (sel && sel.value) {
+                input.disabled = true;
+                input.classList.add('opacity-50');
+                hint.innerText = "当前规则已加入分组，以此处设置为准无效。";
+              } else {
+                input.disabled = false;
+                input.classList.remove('opacity-50');
+                hint.innerText = "";
+              }
+            }
+            // Init
+            if (document.readyState === "loading") {
+              document.addEventListener("DOMContentLoaded", updateLimitHint);
+            } else {
+              updateLimitHint();
+            }
+          </script>
+
+          <label class="form-control">
             <div class="label"><span class="label-text">并发</span></div>
             <input type="number" name="max_parallel_jobs" value="{{.Rule.MaxParallelJobs}}" class="input input-bordered">
             <div class="label"><span class="label-text-alt opacity-70">本规则同时运行的任务数（与“系统设置-总并发”共同生效）。</span></div>

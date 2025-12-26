@@ -10,7 +10,7 @@
       <div class="card-body">
         <div class="card-title text-base flex justify-between">
           运行信息
-          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5 opacity-20">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5 text-primary">
             <path stroke-linecap="round" stroke-linejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z" />
           </svg>
         </div>
@@ -22,7 +22,7 @@
       <div class="card-body">
         <div class="card-title text-base flex justify-between">
           实时状态
-          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5 opacity-20">
+          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5 text-secondary">
             <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" />
           </svg>
         </div>
@@ -76,6 +76,33 @@
       </div>
     </div>
   </div>
+
+  {{if .LimitGroups}}
+  <div class="card bg-base-100 border border-base-200 shadow-sm">
+    <div class="card-body">
+      <div class="card-title text-base flex justify-between mb-2">
+        限流分组状态 (24h)
+        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5 text-accent">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m0-10.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.75c0 5.592 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.57-.598-3.75h-.152c-3.196 0-6.1-1.249-8.25-3.286zm0 13.036h.008v.008H12v-.008z" />
+        </svg>
+      </div>
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        {{range .LimitGroups}}
+          <div class="flex flex-col gap-1 p-3 rounded-lg border {{if ge .Usage .Limit}}border-error bg-error/5{{else}}border-base-200 bg-base-200/30{{end}}">
+            <div class="flex justify-between items-center">
+              <span class="font-bold text-sm truncate">{{.Name}}</span>
+              <span class="text-xs opacity-60">{{if gt .Limit 0}}{{humanBytes .Usage}} / {{humanBytes .Limit}}{{else}}{{humanBytes .Usage}} / 不限{{end}}</span>
+            </div>
+            <progress class="progress w-full {{if ge .Usage .Limit}}progress-error{{else}}progress-primary{{end}}" value="{{.Usage}}" max="{{if gt .Limit 0}}{{.Limit}}{{else}}{{.Usage}}{{end}}"></progress>
+            {{if ge .Usage .Limit}}
+              <div class="text-[10px] text-error font-bold text-right uppercase">已超限</div>
+            {{end}}
+          </div>
+        {{end}}
+      </div>
+    </div>
+  </div>
+  {{end}}
 
   <div class="card bg-base-100 border border-base-200">
     <div class="card-body">

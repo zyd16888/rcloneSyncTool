@@ -7,6 +7,7 @@
     </div>
     <div class="flex gap-2">
       <a class="btn btn-sm btn-info text-info-content" href="/rules/edit">新建规则</a>
+      <a class="btn btn-sm btn-outline" href="/limit_groups">管理限流分组</a>
       <a class="btn btn-sm btn-ghost" href="/manual">手动运行</a>
     </div>
   </div>
@@ -46,7 +47,26 @@
                   {{if .Rule.Bwlimit}} 限速={{.Rule.Bwlimit}}{{end}}
                   {{if gt .Rule.MinFileSizeBytes 0}} 最小={{humanBytes .Rule.MinFileSizeBytes}}{{end}}
                 </td>
-                <td class="opacity-70">新={{.Counts.New}} 稳定={{.Counts.Stable}} 排队={{.Counts.Queued}} 传输中={{.Counts.Transferring}} 完成={{.Counts.Done}} 失败={{.Counts.Failed}}</td>
+                <td class="opacity-70">
+                  <div>新={{.Counts.New}} 稳定={{.Counts.Stable}} 排队={{.Counts.Queued}} 传输中={{.Counts.Transferring}} 完成={{.Counts.Done}} 失败={{.Counts.Failed}}</div>
+                  
+                  {{if .Rule.LimitGroup}}
+                     <div class="text-xs mt-1 badge badge-ghost gap-1">
+                       组: {{.Rule.LimitGroup}}
+                       {{if gt .GroupLimit 0}}
+                         <span class="{{if ge .Usage24h .GroupLimit}}text-error font-bold{{end}}">{{humanBytes .Usage24h}} / {{humanBytes .GroupLimit}}</span>
+                       {{else}}
+                         {{humanBytes .Usage24h}}
+                       {{end}}
+                     </div>
+                  {{else}}
+                    {{if gt .Rule.DailyLimitBytes 0}}
+                      <div class="text-xs mt-1 {{if ge .Usage24h .Rule.DailyLimitBytes}}text-error font-bold{{end}}">24h流量: {{humanBytes .Usage24h}} / {{humanBytes .Rule.DailyLimitBytes}}</div>
+                    {{else if gt .Usage24h 0}}
+                      <div class="text-xs mt-1">24h流量: {{humanBytes .Usage24h}}</div>
+                    {{end}}
+                  {{end}}
+                </td>
                 <td class="flex flex-wrap gap-2">
                   <form class="inline" method="post" action="/rules/scan">
                     <input type="hidden" name="id" value="{{.Rule.ID}}">

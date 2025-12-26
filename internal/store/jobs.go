@@ -272,6 +272,34 @@ WHERE (status = 'running')
 	return n, err
 }
 
+func (s *Store) RuleUsageSince(ctx context.Context, ruleID string, since time.Time) (int64, error) {
+	q := `
+SELECT COALESCE(SUM(bytes_done), 0)
+FROM jobs
+WHERE rule_id = ?
+  AND ((status = 'running') OR (ended_at >= ? AND status != 'running'))
+`
+	var n int64
+	err := s.db.QueryRowContext(ctx, q, ruleID, since.Unix()).Scan(&n)
+	return n, err
+}
+
+func (s *Store) GroupUsageSince(ctx context.Context, group string, since time.Time) (int64, error) {
+	if group == "" {
+		return 0, nil
+	}
+	q := `
+SELECT COALESCE(SUM(j.bytes_done), 0)
+FROM jobs j
+JOIN rules r ON j.rule_id = r.id
+WHERE r.limit_group = ?
+  AND ((j.status = 'running') OR (j.ended_at >= ? AND j.status != 'running'))
+`
+	var n int64
+	err := s.db.QueryRowContext(ctx, q, group, since.Unix()).Scan(&n)
+	return n, err
+}
+
 func (s *Store) CountRunningJobsAll(ctx context.Context) (int, error) {
 	var n int
 	err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM jobs WHERE status='running'`).Scan(&n)
