@@ -92,12 +92,12 @@
                 <td class="opacity-70">{{if .HasM}}{{humanBytes .Metric.Bytes}}{{else}}{{humanBytes .Job.BytesDone}}{{end}}</td>
                 <td class="opacity-70">{{if .HasM}}{{humanSpeed .Metric.Speed}}{{else}}{{humanSpeed .Job.AvgSpeed}}{{end}}</td>
                 <td class="opacity-70" style="max-width: 320px; word-break: break-word;">{{.Job.Error}}</td>
-                <td>
+                <td class="w-20">
                   {{if eq .Job.Status "running"}}
                     <form class="inline" method="post" action="/jobs/terminate" onsubmit="return confirm('确定要终止该任务吗？');">
                       <input type="hidden" name="id" value="{{.Job.JobID}}">
                       <input type="hidden" name="next" value="{{$.SelfURL}}">
-                      <button class="btn btn-error btn-xs" type="submit">终止</button>
+                      <button class="btn btn-error btn-xs whitespace-nowrap" type="submit">终止</button>
                     </form>
                   {{else}}
                     <span class="opacity-70">-</span>
