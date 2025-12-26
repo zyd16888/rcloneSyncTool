@@ -13,107 +13,148 @@
   </div>
 
   <div class="card bg-base-100 border border-base-200">
-    <div class="card-body">
+    <div class="card-body p-0">
       {{if .Rules}}
-        <div class="overflow-x-auto">
-          <table class="table table-sm">
-            <thead>
+        <div class="overflow-auto max-h-[650px] relative rounded-xl">
+          <table class="table table-sm w-full border-separate border-spacing-0">
+            <thead class="sticky top-0 bg-base-100 z-[20] shadow-sm">
               <tr>
-                <th>ID</th>
-                <th>启用</th>
-                <th>模式</th>
-                <th>映射</th>
-                <th>扫描策略</th>
-                <th>统计</th>
-                <th>操作</th>
+                <th class="w-16 bg-base-100 border-b border-base-200">ID</th>
+                <th class="w-16 bg-base-100 border-b border-base-200">状态</th>
+                <th class="bg-base-100 border-b border-base-200">映射路径</th>
+                <th class="bg-base-100 border-b border-base-200">策略 & 统计</th>
+                <th class="w-24 text-center bg-base-100 border-b border-base-200">操作</th>
               </tr>
             </thead>
             <tbody>
               {{range .Rules}}
-              <tr class="hover:bg-base-200/40">
-                <td><a class="link" href="/rules/edit?id={{.Rule.ID}}">{{.Rule.ID}}</a></td>
-                <td>{{if .Rule.Enabled}}是{{else}}否{{end}}</td>
-                <td>{{.Rule.TransferMode}}</td>
-                <td class="opacity-70">
-                  {{if eq .Rule.SrcKind "local"}}
-                    local:{{.Rule.SrcLocalRoot}} → {{.Rule.DstRemote}}:{{.Rule.DstPath}}
-                  {{else}}
-                    {{.Rule.SrcRemote}}:{{.Rule.SrcPath}} → {{.Rule.DstRemote}}:{{.Rule.DstPath}}
-                  {{end}}
-                </td>
-                <td class="opacity-70">
-                  间隔={{.Rule.ScanIntervalSec}}s 稳定={{.Rule.StableSeconds}}s 批={{.Rule.BatchSize}} 并发={{.Rule.MaxParallelJobs}}
-                  {{if eq .Rule.SrcKind "local"}} 监控={{if .Rule.LocalWatch}}开{{else}}关{{end}}{{end}}
-                  {{if .Rule.Bwlimit}} 限速={{.Rule.Bwlimit}}{{end}}
-                  {{if gt .Rule.MinFileSizeBytes 0}} 最小={{humanBytes .Rule.MinFileSizeBytes}}{{end}}
-                </td>
-                <td class="opacity-70">
-                  <div>新={{.Counts.New}} 稳定={{.Counts.Stable}} 排队={{.Counts.Queued}} 传输中={{.Counts.Transferring}} 完成={{.Counts.Done}} 失败={{.Counts.Failed}}</div>
-                  
-                  {{if .Rule.LimitGroup}}
-                     <div class="text-xs mt-1 badge badge-ghost gap-1">
-                       组: {{.Rule.LimitGroup}}
-                       {{if gt .GroupLimit 0}}
-                         <span class="{{if ge .Usage24h .GroupLimit}}text-error font-bold{{end}}">{{humanBytes .Usage24h}} / {{humanBytes .GroupLimit}}</span>
-                       {{else}}
-                         {{humanBytes .Usage24h}}
-                       {{end}}
-                     </div>
-                  {{else}}
-                    {{if gt .Rule.DailyLimitBytes 0}}
-                      <div class="text-xs mt-1 {{if ge .Usage24h .Rule.DailyLimitBytes}}text-error font-bold{{end}}">24h流量: {{humanBytes .Usage24h}} / {{humanBytes .Rule.DailyLimitBytes}}</div>
-                    {{else if gt .Usage24h 0}}
-                      <div class="text-xs mt-1">24h流量: {{humanBytes .Usage24h}}</div>
-                    {{end}}
-                  {{end}}
-                </td>
-                <td class="flex flex-wrap gap-2 items-center">
-                  <form class="flex items-center" method="post" action="/rules/scan">
-                    <input type="hidden" name="id" value="{{.Rule.ID}}">
-                    <button class="btn btn-ghost btn-xs btn-square tooltip" data-tip="立即扫描" type="submit">
-                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4 block mx-auto">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
-                      </svg>
-                    </button>
-                  </form>
-                  <form class="flex items-center" method="post" action="/rules/retry_failed">
-                    <input type="hidden" name="id" value="{{.Rule.ID}}">
-                    <button class="btn btn-ghost btn-xs btn-square tooltip" data-tip="重试失败任务" type="submit">
-                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4 block mx-auto">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
-                      </svg>
-                    </button>
-                  </form>
-                  <div class="flex items-center">
-                    <a class="btn btn-ghost btn-xs btn-square tooltip" data-tip="复制规则" href="/rules/edit?copy_from_id={{.Rule.ID}}">
-                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4 block mx-auto">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 17.25v3.375c0 .621-.504 1.125-1.125 1.125h-9.75a1.125 1.125 0 01-1.125-1.125V7.875c0-.621.504-1.125 1.125-1.125H6.75a9.06 9.06 0 011.5.124m7.5 10.376h3.375c.621 0 1.125-.504 1.125-1.125V11.25c0-4.46-3.243-8.161-7.5-8.876a9.06 9.06 0 00-1.5-.124H9.375c-.621 0-1.125.504-1.125 1.125v3.5m7.5 10.375H9.375a1.125 1.125 0 01-1.125-1.125v-9.25m12 6.625v-1.875a3.375 3.375 0 00-3.375-3.375h-1.5" />
-                      </svg>
-                    </a>
-                  </div>
-                  <form class="flex items-center" method="post" action="/rules/toggle">
+              <tr class="hover:bg-base-200/40 group">
+                <td class="align-top font-mono text-xs pt-4"><a class="link" href="/rules/edit?id={{.Rule.ID}}">{{.Rule.ID}}</a></td>
+                <td class="align-top pt-4">
+                  <form method="post" action="/rules/toggle">
                     <input type="hidden" name="id" value="{{.Rule.ID}}">
                     <input type="hidden" name="enabled" value="{{if .Rule.Enabled}}0{{else}}1{{end}}">
-                    <button class="btn btn-xs btn-square tooltip {{if .Rule.Enabled}}btn-warning{{else}}btn-success{{end}} btn-outline" data-tip="{{if .Rule.Enabled}}停用{{else}}启用{{end}}" type="submit">
+                    <button class="btn btn-xs btn-circle {{if .Rule.Enabled}}btn-success text-success-content{{else}}btn-ghost opacity-50{{end}} tooltip" data-tip="{{if .Rule.Enabled}}点击停用{{else}}点击启用{{end}}" type="submit">
                       {{if .Rule.Enabled}}
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4 block mx-auto">
-                          <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 5.25a3 3 0 013 3m3 0a6 6 0 01-7.029 5.912c-.563-.097-1.159.026-1.563.43L10.5 17.25H8.25v2.25H6v2.25H2.25v-2.818c0-.597.237-1.17.659-1.591l6.499-6.499c.404-.404.527-1 .43-1.563A6 6 0 1121.75 8.25z" />
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-4 h-4">
+                          <path fill-rule="evenodd" d="M16.704 4.153a.75.75 0 0 1 .143 1.052l-8 10.5a.75.75 0 0 1-1.127.075l-4.5-4.5a.75.75 0 0 1 1.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 0 1 1.05-.143Z" clip-rule="evenodd" />
                         </svg>
                       {{else}}
-                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4 block mx-auto">
-                           <path stroke-linecap="round" stroke-linejoin="round" d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.971l-11.54 6.347a1.125 1.125 0 01-1.667-.985V5.653z" />
-                         </svg>
+                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-4 h-4">
+                          <path d="M6.28 5.22a.75.75 0 0 0-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 1 0 1.06 1.06L10 11.06l3.72 3.72a.75.75 0 1 0 1.06-1.06L11.06 10l3.72-3.72a.75.75 0 0 0-1.06-1.06L10 8.94 6.28 5.22Z" />
+                        </svg>
                       {{end}}
                     </button>
                   </form>
-                  <form class="flex items-center" method="post" action="/rules/delete" onsubmit="return confirm('确定要删除该规则吗？');">
-                    <input type="hidden" name="id" value="{{.Rule.ID}}">
-                    <button class="btn btn-error btn-ghost btn-xs btn-square tooltip" data-tip="删除" type="submit">
-                      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4 block mx-auto">
-                         <path stroke-linecap="round" stroke-linejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
-                      </svg>
-                    </button>
-                  </form>
+                </td>
+                <td class="align-top max-w-[200px] lg:max-w-[300px] pt-4">
+                  <div class="flex flex-col gap-1">
+                    <div class="flex items-center gap-1 text-xs opacity-50">
+                      <span class="badge badge-xs badge-outline">{{.Rule.TransferMode}}</span>
+                      {{if eq .Rule.SrcKind "local"}}<span class="badge badge-xs badge-ghost">Local Watch: {{if .Rule.LocalWatch}}ON{{else}}OFF{{end}}</span>{{end}}
+                    </div>
+                    <div class="text-sm font-medium truncate" title="{{if eq .Rule.SrcKind "local"}}{{.Rule.SrcLocalRoot}}{{else}}{{.Rule.SrcRemote}}:{{.Rule.SrcPath}}{{end}}">
+                      {{if eq .Rule.SrcKind "local"}}
+                        <span class="opacity-70">📂</span> {{.Rule.SrcLocalRoot}}
+                      {{else}}
+                        <span class="opacity-70">☁️</span> {{.Rule.SrcRemote}}:<span class="opacity-70">{{.Rule.SrcPath}}</span>
+                      {{end}}
+                    </div>
+                    <div class="text-xs opacity-50 text-center w-6">↓</div>
+                    <div class="text-sm truncate" title="{{.Rule.DstRemote}}:{{.Rule.DstPath}}">
+                      <span class="opacity-70">☁️</span> {{.Rule.DstRemote}}:<span class="opacity-70">{{.Rule.DstPath}}</span>
+                    </div>
+                  </div>
+                </td>
+                <td class="align-top text-xs pt-4">
+                  <div class="flex flex-col gap-2 items-start">
+                    <div class="flex flex-wrap gap-x-3 gap-y-1 opacity-70 ml-1">
+                      <span title="扫描间隔">⏱️ {{.Rule.ScanIntervalSec}}s</span>
+                      <span title="稳定时间">⚓ {{.Rule.StableSeconds}}s</span>
+                      <span title="并发数">🚀 {{.Rule.MaxParallelJobs}}</span>
+                      {{if .Rule.Bwlimit}}<span title="限速">🛑 {{.Rule.Bwlimit}}</span>{{end}}
+                      {{if gt .Rule.MinFileSizeBytes 0}}<span title="最小文件">📉 {{humanBytes .Rule.MinFileSizeBytes}}</span>{{end}}
+                    </div>
+                    
+                    <div class="p-2 bg-base-200/50 rounded border border-base-200 w-full max-w-sm">
+                      <div class="grid grid-cols-2 gap-x-6 gap-y-1">
+                        <div class="flex justify-between items-center opacity-80"><span class="opacity-60">🆕 新发现</span> <span class="font-mono">{{.Counts.New}}</span></div>
+                        <div class="flex justify-between items-center opacity-80"><span class="opacity-60">⏳ 排队中</span> <span class="font-mono">{{.Counts.Queued}}</span></div>
+                        <div class="flex justify-between items-center {{if gt .Counts.Transferring 0}}text-primary font-bold{{else}}opacity-80{{end}}"><span class="opacity-60">▶️ 传输中</span> <span class="font-mono">{{.Counts.Transferring}}</span></div>
+                        <div class="flex justify-between items-center opacity-80"><span class="opacity-60">✅ 已完成</span> <span class="font-mono">{{.Counts.Done}}</span></div>
+                        {{if gt .Counts.Failed 0}}
+                        <div class="flex justify-between items-center text-error font-bold col-span-2 border-t border-base-content/5 mt-1 pt-1"><span class="opacity-60">❌ 失败</span> <span>{{.Counts.Failed}}</span></div>
+                        {{end}}
+                      </div>
+
+                      {{if .Rule.LimitGroup}}
+                         <div class="mt-2 pt-2 border-t border-base-content/5 flex justify-between items-center text-[10px] sm:text-xs">
+                           <span class="badge badge-xs badge-ghost">组: {{.Rule.LimitGroup}}</span>
+                           <span class="{{if ge .Usage24h .GroupLimit}}text-error font-bold{{end}}">{{humanBytes .Usage24h}}{{if gt .GroupLimit 0}} / {{humanBytes .GroupLimit}}{{end}}</span>
+                         </div>
+                      {{else if gt .Usage24h 0}}
+                        <div class="mt-2 pt-2 border-t border-base-content/5 flex justify-between items-center text-[10px] sm:text-xs">
+                          <span class="opacity-50">24h 流量</span>
+                          <span class="{{if and (gt .Rule.DailyLimitBytes 0) (ge .Usage24h .Rule.DailyLimitBytes)}}text-error font-bold{{end}}">
+                            {{humanBytes .Usage24h}}{{if gt .Rule.DailyLimitBytes 0}} / {{humanBytes .Rule.DailyLimitBytes}}{{end}}
+                          </span>
+                        </div>
+                      {{end}}
+                    </div>
+                  </div>
+                </td>
+                <td class="align-top text-center pt-4">
+                  <div class="flex items-center justify-center gap-1">
+                    <form method="post" action="/rules/scan">
+                      <input type="hidden" name="id" value="{{.Rule.ID}}">
+                      <button class="btn btn-sm btn-ghost btn-square tooltip" data-tip="立即扫描" type="submit">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5">
+                          <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
+                        </svg>
+                      </button>
+                    </form>
+                    
+                    <div class="dropdown dropdown-left">
+                      <div tabindex="0" role="button" class="btn btn-sm btn-ghost btn-square">
+                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5">
+                          <path stroke-linecap="round" stroke-linejoin="round" d="M12 6.75a.75.75 0 1 1 0-1.5.75.75 0 0 1 0 1.5ZM12 12.75a.75.75 0 1 1 0-1.5.75.75 0 0 1 0 1.5ZM12 18.75a.75.75 0 1 1 0-1.5.75.75 0 0 1 0 1.5Z" />
+                        </svg>
+                      </div>
+                      <ul tabindex="0" class="dropdown-content z-[100] menu p-2 shadow-2xl bg-base-100 rounded-box w-40 text-sm border border-base-200 mr-2">
+                        <li>
+                          <form method="post" action="/rules/retry_failed" class="w-full p-0">
+                            <input type="hidden" name="id" value="{{.Rule.ID}}">
+                            <button type="submit" class="flex gap-2 w-full px-4 py-2 hover:bg-base-200 rounded-lg">
+                              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
+                              </svg>
+                              <span>重试失败</span>
+                            </button>
+                          </form>
+                        </li>
+                        <li>
+                          <a href="/rules/edit?copy_from_id={{.Rule.ID}}" class="flex gap-2 px-4 py-2">
+                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4">
+                              <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 17.25v3.375c0 .621-.504 1.125-1.125 1.125h-9.75a1.125 1.125 0 01-1.125-1.125V7.875c0-.621.504-1.125 1.125-1.125H6.75a9.06 9.06 0 011.5.124m7.5 10.376h3.375c.621 0 1.125-.504 1.125-1.125V11.25c0-4.46-3.243-8.161-7.5-8.876a9.06 9.06 0 00-1.5-.124H9.375c-.621 0-1.125.504-1.125 1.125v3.5m7.5 10.375H9.375a1.125 1.125 0 01-1.125-1.125v-9.25m12 6.625v-1.875a3.375 3.375 0 00-3.375-3.375h-1.5" />
+                            </svg>
+                            <span>复制规则</span>
+                          </a>
+                        </li>
+                        <div class="divider my-1 opacity-20"></div>
+                        <li>
+                          <form method="post" action="/rules/delete" onsubmit="return confirm('确定要删除该规则吗？');" class="w-full p-0">
+                            <input type="hidden" name="id" value="{{.Rule.ID}}">
+                            <button type="submit" class="flex gap-2 w-full px-4 py-2 text-error hover:bg-error/10 rounded-lg">
+                              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4 text-error">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
+                              </svg>
+                              <span>删除规则</span>
+                            </button>
+                          </form>
+                        </li>
+                      </ul>
+                    </div>
+                  </div>
                 </td>
               </tr>
               {{end}}
