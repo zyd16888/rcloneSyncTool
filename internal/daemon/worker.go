@@ -195,6 +195,7 @@ func (w *ruleWorker) startOneJob(scanCtx context.Context, jobCtx context.Context
 	if len(paths) == 0 {
 		return
 	}
+	log.Printf("[Worker] Job %s (Rule: %s) starting with %d files", jobID, w.rule.ID, len(paths))
 	if w.stopped.Load() || scanCtx.Err() != nil {
 		_ = w.st.ReleaseTransferringBackToQueued(jobCtx, jobID)
 		return
@@ -447,6 +448,7 @@ func (w *ruleWorker) runWithMetrics(ctx context.Context, settings store.RuntimeS
 	}
 
 	_ = os.MkdirAll(filepath.Dir(logPath), 0o755)
+	log.Printf("[Executor] Job %s: running rclone %s", jobID, strings.Join(args, " "))
 	cmd := exec.CommandContext(ctx, "rclone", args...)
 	cmd.Stdout = nil
 	var stderr strings.Builder
@@ -484,34 +486,34 @@ func (w *ruleWorker) runWithMetrics(ctx context.Context, settings store.RuntimeS
 		case <-ctx.Done():
 			_ = cmd.Process.Kill()
 			_ = <-done
+			res := jobResult{BytesDone: last.Bytes, AvgSpeed: avgSpeed(last.Bytes, start), Err: ctx.Err()}
 			if h != nil && h.Terminated() {
-				return jobResult{BytesDone: last.Bytes, AvgSpeed: avgSpeed(last.Bytes, start), Err: errTerminatedByUser}
+				res.Err = errTerminatedByUser
 			}
-			return jobResult{BytesDone: last.Bytes, AvgSpeed: avgSpeed(last.Bytes, start), Err: ctx.Err()}
+			log.Printf("[Executor] Job %s finished: %v (Done: %d bytes, AvgSpeed: %.2f B/s)", jobID, res.Err, res.BytesDone, res.AvgSpeed)
+			return res
 		case err := <-done:
+			res := jobResult{BytesDone: last.Bytes, AvgSpeed: avgSpeed(last.Bytes, start), Err: err}
 			if h != nil && h.Terminated() {
-				return jobResult{BytesDone: last.Bytes, AvgSpeed: avgSpeed(last.Bytes, start), Err: errTerminatedByUser}
+				res.Err = errTerminatedByUser
 			}
-			if err != nil {
+			if res.Err != nil {
 				// keep log in log file; minimal error message here
 				var exitErr *exec.ExitError
-				if errors.As(err, &exitErr) {
+				if errors.As(res.Err, &exitErr) {
 					if st, ok := exitErr.Sys().(syscall.WaitStatus); ok && st.Signaled() {
-						return jobResult{BytesDone: last.Bytes, AvgSpeed: avgSpeed(last.Bytes, start), Err: errTerminatedBySignal}
+						res.Err = errTerminatedBySignal
+					} else {
+						msg := strings.TrimSpace(stderr.String())
+						if msg == "" {
+							msg = res.Err.Error()
+						}
+						res.Err = errors.New(msg)
 					}
-					msg := strings.TrimSpace(stderr.String())
-					if msg == "" {
-						msg = err.Error()
-					}
-					return jobResult{BytesDone: last.Bytes, AvgSpeed: avgSpeed(last.Bytes, start), Err: errors.New(msg)}
 				}
-				msg := strings.TrimSpace(stderr.String())
-				if msg == "" {
-					msg = err.Error()
-				}
-				return jobResult{BytesDone: last.Bytes, AvgSpeed: avgSpeed(last.Bytes, start), Err: errors.New(msg)}
 			}
-			return jobResult{BytesDone: last.Bytes, AvgSpeed: avgSpeed(last.Bytes, start), Err: nil}
+			log.Printf("[Executor] Job %s finished: %v (Done: %d bytes, AvgSpeed: %.2f B/s)", jobID, res.Err, res.BytesDone, res.AvgSpeed)
+			return res
 		case <-ticker.C:
 			s, err := pollRC(ctx, port)
 			if err != nil {
