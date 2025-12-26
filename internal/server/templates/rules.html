@@ -17,13 +17,13 @@
       {{if .Rules}}
         <div class="overflow-visible relative rounded-xl">
           <table class="table table-sm w-full border-separate border-spacing-0">
-            <thead class="sticky top-14 bg-base-100 z-[20] shadow-sm"> {{/* Top-14 corresponds to navbar height */}}
+            <thead class="sticky top-14 bg-base-100 z-[20] shadow-sm">
               <tr>
                 <th class="w-16 bg-base-100 border-b border-base-200">ID</th>
-                <th class="w-16 bg-base-100 border-b border-base-200">状态</th>
+                <th class="w-20 bg-base-100 border-b border-base-200">状态</th>
                 <th class="bg-base-100 border-b border-base-200">映射路径</th>
                 <th class="bg-base-100 border-b border-base-200">策略 & 统计</th>
-                <th class="w-24 text-center bg-base-100 border-b border-base-200">操作</th>
+                <th class="w-32 text-center bg-base-100 border-b border-base-200">操作</th>
               </tr>
             </thead>
             <tbody>
@@ -31,21 +31,11 @@
               <tr class="hover:bg-base-200/40 group">
                 <td class="align-top font-mono text-xs pt-4"><a class="link" href="/rules/edit?id={{.Rule.ID}}">{{.Rule.ID}}</a></td>
                 <td class="align-top pt-4">
-                  <form method="post" action="/rules/toggle">
-                    <input type="hidden" name="id" value="{{.Rule.ID}}">
-                    <input type="hidden" name="enabled" value="{{if .Rule.Enabled}}0{{else}}1{{end}}">
-                    <button class="btn btn-xs btn-circle {{if .Rule.Enabled}}btn-success text-success-content{{else}}btn-ghost opacity-50{{end}} tooltip" data-tip="{{if .Rule.Enabled}}点击停用{{else}}点击启用{{end}}" type="submit">
-                      {{if .Rule.Enabled}}
-                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-4 h-4">
-                          <path fill-rule="evenodd" d="M16.704 4.153a.75.75 0 0 1 .143 1.052l-8 10.5a.75.75 0 0 1-1.127.075l-4.5-4.5a.75.75 0 0 1 1.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 0 1 1.05-.143Z" clip-rule="evenodd" />
-                        </svg>
-                      {{else}}
-                        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="w-4 h-4">
-                          <path d="M6.28 5.22a.75.75 0 0 0-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 1 0 1.06 1.06L10 11.06l3.72 3.72a.75.75 0 1 0 1.06-1.06L11.06 10l3.72-3.72a.75.75 0 0 0-1.06-1.06L10 8.94 6.28 5.22Z" />
-                        </svg>
-                      {{end}}
-                    </button>
-                  </form>
+                  {{if .Rule.Enabled}}
+                    <span class="badge badge-success badge-outline badge-sm">运行中</span>
+                    {{else}}
+                    <span class="badge badge-ghost badge-sm opacity-50">已停止</span>
+                    {{end}}
                 </td>
                 <td class="align-top max-w-[200px] lg:max-w-[300px] pt-4">
                   <div class="flex flex-col gap-1 text-left">
@@ -105,6 +95,7 @@
                 </td>
                 <td class="align-top text-center pt-4">
                   <div class="flex items-center justify-center gap-1">
+                    <!-- Scan -->
                     <form method="post" action="/rules/scan">
                       <input type="hidden" name="id" value="{{.Rule.ID}}">
                       <button class="btn btn-sm btn-ghost btn-square tooltip" data-tip="立即扫描" type="submit">
@@ -113,7 +104,29 @@
                         </svg>
                       </button>
                     </form>
+<!-- Toggle Start/Stop -->
+<form method="post" action="/rules/toggle">
+  <input type="hidden" name="id" value="{{.Rule.ID}}">
+  <input type="hidden" name="enabled" value="{{if .Rule.Enabled}}0{{else}}1{{end}}">
+  <button class="btn btn-sm btn-ghost btn-square tooltip {{if .Rule.Enabled}}text-warning{{else}}text-success{{end}}"
+    data-tip="{{if .Rule.Enabled}}停止规则{{else}}启动规则{{end}}" type="submit">
+    {{if .Rule.Enabled}}
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"
+      class="w-5 h-5">
+      <path stroke-linecap="round" stroke-linejoin="round"
+        d="M15.75 5.25a3 3 0 013 3m3 0a6 6 0 01-7.029 5.912c-.563-.097-1.159.026-1.563.43L10.5 17.25H8.25v2.25H6v2.25H2.25v-2.818c0-.597.237-1.17.659-1.591l6.499-6.499c.404-.404.527-1 .43-1.563A6 6 0 1121.75 8.25z" />
+    </svg>
+    {{else}}
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"
+      class="w-5 h-5">
+      <path stroke-linecap="round" stroke-linejoin="round"
+        d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.971l-11.54 6.347a1.125 1.125 0 01-1.667-.985V5.653z" />
+    </svg>
+    {{end}}
+  </button>
+</form>
                     
+                    <!-- More -->
                     <div class="dropdown dropdown-left">
                       <div tabindex="0" role="button" class="btn btn-sm btn-ghost btn-square">
                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5">
