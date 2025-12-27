@@ -175,8 +175,8 @@ func (w *ruleWorker) startOneJob(scanCtx context.Context, jobCtx context.Context
 	}
 
 	limitBytes := w.rule.DailyLimitBytes
-	usageFn := func() (int64, error) {
-		return w.st.RuleUsageSince(scanCtx, w.rule.ID, time.Now().Add(-24*time.Hour))
+	budgetFn := func() (int64, error) {
+		return w.st.RuleBudgetSince(scanCtx, w.rule.ID, time.Now().Add(-24*time.Hour))
 	}
 	// If grouped, use group logic
 	if w.rule.LimitGroup != "" {
@@ -191,18 +191,18 @@ func (w *ruleWorker) startOneJob(scanCtx context.Context, jobCtx context.Context
 			// Group not found? fallback to rule's limit or 0?
 			// Let's assume 0 (unlimited) or log warning.
 			// Ideally the UI prevents selecting non-existent groups, but user can delete group.
-			limitBytes = 0 
+			limitBytes = 0
 		}
 
-		usageFn = func() (int64, error) {
-			return w.st.GroupUsageSince(scanCtx, w.rule.LimitGroup, time.Now().Add(-24*time.Hour))
+		budgetFn = func() (int64, error) {
+			return w.st.GroupBudgetSince(scanCtx, w.rule.LimitGroup, time.Now().Add(-24*time.Hour))
 		}
 	}
 
 	if limitBytes > 0 {
-		usage, err := usageFn()
+		usage, err := budgetFn()
 		if err != nil {
-			log.Printf("rule %s: check usage: %v", w.rule.ID, err)
+			log.Printf("rule %s: check budget usage: %v", w.rule.ID, err)
 		} else if usage >= limitBytes {
 			// Limit reached.
 			return
@@ -232,14 +232,16 @@ func (w *ruleWorker) startOneJob(scanCtx context.Context, jobCtx context.Context
 		return
 	}
 
-	// Pre-check limit with estimated size
+	// Pre-check limit with estimated size.
+	// Budget usage includes in-flight transferring file sizes, which prevents concurrent jobs
+	// in the same group from collectively exceeding quota.
 	if limitBytes > 0 {
 		jobSize, err := w.st.GetJobFilesSize(jobCtx, jobID)
 		if err == nil {
-			currentUsage, _ := usageFn()
-			if currentUsage+jobSize > limitBytes {
-				log.Printf("rule %s: daily limit exceeded (usage: %d, job: %d, limit: %d), skipping job %s", 
-					w.rule.ID, currentUsage, jobSize, limitBytes, jobID)
+			currentBudget, _ := budgetFn()
+			if currentBudget > limitBytes {
+				log.Printf("rule %s: daily limit exceeded (budget: %d, job: %d, limit: %d), skipping job %s",
+					w.rule.ID, currentBudget, jobSize, limitBytes, jobID)
 				_ = w.st.ReleaseTransferringBackToQueued(jobCtx, jobID)
 				return
 			}

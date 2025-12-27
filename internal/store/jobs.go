@@ -284,6 +284,34 @@ WHERE rule_id = ?
 	return n, err
 }
 
+// RuleBudgetSince returns an estimated usage for scheduling decisions:
+// - counts bytes_done for ended jobs in the window
+// - counts full size of currently transferring files (in-flight reservation)
+// This avoids starting new jobs when concurrent running jobs would cause quota overshoot.
+func (s *Store) RuleBudgetSince(ctx context.Context, ruleID string, since time.Time) (int64, error) {
+	var ended int64
+	if err := s.db.QueryRowContext(ctx, `
+SELECT COALESCE(SUM(bytes_done), 0)
+FROM jobs
+WHERE rule_id = ?
+  AND ended_at >= ?
+  AND status != 'running'
+`, ruleID, since.Unix()).Scan(&ended); err != nil {
+		return 0, err
+	}
+
+	var inflight int64
+	if err := s.db.QueryRowContext(ctx, `
+SELECT COALESCE(SUM(size), 0)
+FROM files
+WHERE rule_id = ?
+  AND state = 'transferring'
+`, ruleID).Scan(&inflight); err != nil {
+		return 0, err
+	}
+	return ended + inflight, nil
+}
+
 func (s *Store) GroupUsageSince(ctx context.Context, group string, since time.Time) (int64, error) {
 	if group == "" {
 		return 0, nil
@@ -298,6 +326,36 @@ WHERE r.limit_group = ?
 	var n int64
 	err := s.db.QueryRowContext(ctx, q, group, since.Unix()).Scan(&n)
 	return n, err
+}
+
+// GroupBudgetSince is the group-level variant of RuleBudgetSince.
+func (s *Store) GroupBudgetSince(ctx context.Context, group string, since time.Time) (int64, error) {
+	if group == "" {
+		return 0, nil
+	}
+	var ended int64
+	if err := s.db.QueryRowContext(ctx, `
+SELECT COALESCE(SUM(j.bytes_done), 0)
+FROM jobs j
+JOIN rules r ON j.rule_id = r.id
+WHERE r.limit_group = ?
+  AND j.ended_at >= ?
+  AND j.status != 'running'
+`, group, since.Unix()).Scan(&ended); err != nil {
+		return 0, err
+	}
+
+	var inflight int64
+	if err := s.db.QueryRowContext(ctx, `
+SELECT COALESCE(SUM(f.size), 0)
+FROM files f
+JOIN rules r ON f.rule_id = r.id
+WHERE r.limit_group = ?
+  AND f.state = 'transferring'
+`, group).Scan(&inflight); err != nil {
+		return 0, err
+	}
+	return ended + inflight, nil
 }
 
 func (s *Store) CountRunningJobsAll(ctx context.Context) (int, error) {
