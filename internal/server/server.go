@@ -198,6 +198,12 @@ func (s *Server) dashboard(c *gin.Context) {
 		}
 		rows = append(rows, ruleRow{Rule: rule, Counts: counts, Usage24h: usage, GroupLimit: limit})
 	}
+	var enabledRows []ruleRow
+	for _, row := range rows {
+		if row.Rule.Enabled {
+			enabledRows = append(enabledRows, row)
+		}
+	}
 	jobsPage := atoiDefault(c.Query("jobs_page"), 1)
 	jobsPageSize := normalizePageSize(c.Query("jobs_page_size"), 10)
 	if jobsPage <= 0 {
@@ -255,6 +261,7 @@ func (s *Server) dashboard(c *gin.Context) {
 	s.render(c, "dashboard", map[string]any{
 		"Active":   "dashboard",
 		"Rules":    rows,
+		"EnabledRules": enabledRows,
 		"Jobs":     jobRows,
 		"LogDir":   s.logDir,
 		"TotalBytes": totalBytes,

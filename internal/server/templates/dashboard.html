@@ -145,47 +145,49 @@
           <thead>
             <tr>
               <th class="bg-base-100 border-b border-base-200 w-16">ID</th>
-              <th class="bg-base-100 border-b border-base-200 w-12 text-center">状态</th>
               <th class="bg-base-100 border-b border-base-200">映射路径</th>
               <th class="bg-base-100 border-b border-base-200">实时统计</th>
             </tr>
           </thead>
           <tbody>
-            {{range .Rules}}
-            <tr class="hover:bg-base-200/40 group">
-              <td class="align-top font-mono text-xs pt-3"><a class="link" href="/rules/edit?id={{.Rule.ID}}">{{.Rule.ID}}</a></td>
-              <td class="align-top pt-3 text-center">
-                <div class="w-2 h-2 rounded-full mx-auto {{if .Rule.Enabled}}bg-success shadow-[0_0_8px_rgba(34,197,94,0.6)]{{else}}bg-base-300{{end}}" title="{{if .Rule.Enabled}}已启用{{else}}已停止{{end}}"></div>
-              </td>
-              <td class="align-top pt-3">
-                <div class="flex flex-col gap-0.5 text-xs">
-                  <div class="truncate opacity-80" title="{{if eq .Rule.SrcKind "local"}}{{.Rule.SrcLocalRoot}}{{else}}{{.Rule.SrcRemote}}:{{.Rule.SrcPath}}{{end}}">
-                    {{if eq .Rule.SrcKind "local"}}📂{{else}}☁️{{end}} {{if eq .Rule.SrcKind "local"}}{{.Rule.SrcLocalRoot}}{{else}}{{.Rule.SrcRemote}}:{{.Rule.SrcPath}}{{end}}
-                  </div>
-                  <div class="truncate opacity-80" title="{{.Rule.DstRemote}}:{{.Rule.DstPath}}">
-                    ☁️ {{.Rule.DstRemote}}:{{.Rule.DstPath}}
-                  </div>
-                </div>
-              </td>
-              <td class="align-top pt-2">
-                <div class="flex flex-col gap-1.5">
-                  <div class="flex flex-wrap gap-x-3 gap-y-1 text-[10px] opacity-80">
-                    <span class="{{if gt .Counts.Transferring 0}}text-primary font-bold{{end}}">▶️ {{.Counts.Transferring}}</span>
-                    <span>⏳ {{.Counts.Queued}}</span>
-                    <span>✅ {{.Counts.Done}}</span>
-                    {{if gt .Counts.Failed 0}}<span class="text-error font-bold">❌ {{.Counts.Failed}}</span>{{end}}
-                  </div>
-                  {{if .Rule.LimitGroup}}
-                    <div class="flex items-center gap-2 text-[9px] opacity-60">
-                      <span class="badge badge-xs badge-ghost scale-90 origin-left">组: {{.Rule.LimitGroup}}</span>
-                      <span class="{{if ge .Usage24h .GroupLimit}}text-error font-bold{{end}}">{{humanBytes .Usage24h}}{{if gt .GroupLimit 0}}/{{humanBytes .GroupLimit}}{{end}}</span>
+            {{if .EnabledRules}}
+              {{range .EnabledRules}}
+              <tr class="hover:bg-base-200/40 group">
+                <td class="align-top font-mono text-xs pt-3"><a class="link" href="/rules/edit?id={{.Rule.ID}}">{{.Rule.ID}}</a></td>
+                <td class="align-top pt-3">
+                  <div class="flex flex-col gap-0.5 text-xs">
+                    <div class="truncate opacity-80" title="{{if eq .Rule.SrcKind "local"}}{{.Rule.SrcLocalRoot}}{{else}}{{.Rule.SrcRemote}}:{{.Rule.SrcPath}}{{end}}">
+                      {{if eq .Rule.SrcKind "local"}}📂{{else}}☁️{{end}} {{if eq .Rule.SrcKind "local"}}{{.Rule.SrcLocalRoot}}{{else}}{{.Rule.SrcRemote}}:{{.Rule.SrcPath}}{{end}}
                     </div>
-                  {{else if gt .Usage24h 0}}
-                    <div class="text-[9px] opacity-50">24h: {{humanBytes .Usage24h}}</div>
-                  {{end}}
-                </div>
-              </td>
-            </tr>
+                    <div class="truncate opacity-80" title="{{.Rule.DstRemote}}:{{.Rule.DstPath}}">
+                      ☁️ {{.Rule.DstRemote}}:{{.Rule.DstPath}}
+                    </div>
+                  </div>
+                </td>
+                <td class="align-top pt-2">
+                  <div class="flex flex-col gap-1.5">
+                    <div class="flex flex-wrap gap-x-3 gap-y-1 text-[10px] opacity-80">
+                      <span class="{{if gt .Counts.Transferring 0}}text-primary font-bold{{end}}">▶️ {{.Counts.Transferring}}</span>
+                      <span>⏳ {{.Counts.Queued}}</span>
+                      <span>✅ {{.Counts.Done}}</span>
+                      {{if gt .Counts.Failed 0}}<span class="text-error font-bold">❌ {{.Counts.Failed}}</span>{{end}}
+                    </div>
+                    {{if .Rule.LimitGroup}}
+                      <div class="flex items-center gap-2 text-[9px] opacity-60">
+                        <span class="badge badge-xs badge-ghost scale-90 origin-left">组: {{.Rule.LimitGroup}}</span>
+                        <span class="{{if ge .Usage24h .GroupLimit}}text-error font-bold{{end}}">{{humanBytes .Usage24h}}{{if gt .GroupLimit 0}}/{{humanBytes .GroupLimit}}{{end}}</span>
+                      </div>
+                    {{else if gt .Usage24h 0}}
+                      <div class="text-[9px] opacity-50">24h: {{humanBytes .Usage24h}}</div>
+                    {{end}}
+                  </div>
+                </td>
+              </tr>
+              {{end}}
+            {{else}}
+              <tr>
+                <td colspan="3" class="text-center opacity-60 py-6">暂无启用规则</td>
+              </tr>
             {{end}}
           </tbody>
         </table>
