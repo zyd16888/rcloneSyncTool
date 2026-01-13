@@ -10,7 +10,8 @@ import (
 func (s *Store) ListRules(ctx context.Context) ([]Rule, error) {
 	rows, err := s.db.QueryContext(ctx, `
 SELECT id, limit_group, src_kind, src_remote, src_path, src_local_root, local_watch_enabled,
-       dst_remote, dst_path, transfer_mode, rclone_extra_args, ignore_extensions, bwlimit,
+       dst_remote, dst_path, transfer_mode, rclone_extra_args, resume_enabled, partial_dir, partial_suffix,
+       ignore_extensions, bwlimit,
        daily_limit_bytes, min_file_size_bytes, is_manual,
        max_parallel_jobs, scan_interval_sec, stable_seconds, batch_size, enabled,
        created_at, updated_at
@@ -27,11 +28,13 @@ ORDER BY id
 		var r Rule
 		var enabled int
 		var watch int
+		var resumeEnabled int
 		var isManual int
 		var created, updated int64
 		if err := rows.Scan(
 			&r.ID, &r.LimitGroup, &r.SrcKind, &r.SrcRemote, &r.SrcPath, &r.SrcLocalRoot, &watch,
-			&r.DstRemote, &r.DstPath, &r.TransferMode, &r.RcloneExtraArgs, &r.IgnoreExtensions, &r.Bwlimit,
+			&r.DstRemote, &r.DstPath, &r.TransferMode, &r.RcloneExtraArgs, &resumeEnabled, &r.PartialDir, &r.PartialSuffix,
+			&r.IgnoreExtensions, &r.Bwlimit,
 			&r.DailyLimitBytes, &r.MinFileSizeBytes, &isManual,
 			&r.MaxParallelJobs, &r.ScanIntervalSec, &r.StableSeconds, &r.BatchSize, &enabled,
 			&created, &updated,
@@ -40,6 +43,7 @@ ORDER BY id
 		}
 		r.Enabled = enabled != 0
 		r.LocalWatch = watch != 0
+		r.ResumeEnabled = resumeEnabled != 0
 		r.IsManual = isManual != 0
 		r.CreatedAt = time.Unix(created, 0)
 		r.UpdatedAt = time.Unix(updated, 0)
@@ -52,11 +56,13 @@ func (s *Store) GetRule(ctx context.Context, id string) (Rule, bool, error) {
 	var r Rule
 	var enabled int
 	var watch int
+	var resumeEnabled int
 	var isManual int
 	var created, updated int64
 	err := s.db.QueryRowContext(ctx, `
 SELECT id, limit_group, src_kind, src_remote, src_path, src_local_root, local_watch_enabled,
-       dst_remote, dst_path, transfer_mode, rclone_extra_args, ignore_extensions, bwlimit,
+       dst_remote, dst_path, transfer_mode, rclone_extra_args, resume_enabled, partial_dir, partial_suffix,
+       ignore_extensions, bwlimit,
        daily_limit_bytes, min_file_size_bytes, is_manual,
        max_parallel_jobs, scan_interval_sec, stable_seconds, batch_size, enabled,
        created_at, updated_at
@@ -64,7 +70,8 @@ FROM rules
 WHERE id=?
 `, id).Scan(
 		&r.ID, &r.LimitGroup, &r.SrcKind, &r.SrcRemote, &r.SrcPath, &r.SrcLocalRoot, &watch,
-		&r.DstRemote, &r.DstPath, &r.TransferMode, &r.RcloneExtraArgs, &r.IgnoreExtensions, &r.Bwlimit,
+		&r.DstRemote, &r.DstPath, &r.TransferMode, &r.RcloneExtraArgs, &resumeEnabled, &r.PartialDir, &r.PartialSuffix,
+		&r.IgnoreExtensions, &r.Bwlimit,
 		&r.DailyLimitBytes, &r.MinFileSizeBytes, &isManual,
 		&r.MaxParallelJobs, &r.ScanIntervalSec, &r.StableSeconds, &r.BatchSize, &enabled,
 		&created, &updated,
@@ -77,6 +84,7 @@ WHERE id=?
 	}
 	r.Enabled = enabled != 0
 	r.LocalWatch = watch != 0
+	r.ResumeEnabled = resumeEnabled != 0
 	r.IsManual = isManual != 0
 	r.CreatedAt = time.Unix(created, 0)
 	r.UpdatedAt = time.Unix(updated, 0)
@@ -91,12 +99,13 @@ func (s *Store) UpsertRule(ctx context.Context, r Rule) error {
 	_, err := s.db.ExecContext(ctx, `
 INSERT INTO rules(
   id, limit_group, src_kind, src_remote, src_path, src_local_root, local_watch_enabled,
-  dst_remote, dst_path, transfer_mode, rclone_extra_args, ignore_extensions, bwlimit,
+  dst_remote, dst_path, transfer_mode, rclone_extra_args, resume_enabled, partial_dir, partial_suffix,
+  ignore_extensions, bwlimit,
   daily_limit_bytes, min_file_size_bytes, is_manual,
   max_parallel_jobs, scan_interval_sec, stable_seconds, batch_size, enabled,
   created_at, updated_at
 )
-VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(id) DO UPDATE SET
   limit_group=excluded.limit_group,
   src_kind=excluded.src_kind,
@@ -108,6 +117,9 @@ ON CONFLICT(id) DO UPDATE SET
   dst_path=excluded.dst_path,
   transfer_mode=excluded.transfer_mode,
   rclone_extra_args=excluded.rclone_extra_args,
+  resume_enabled=excluded.resume_enabled,
+  partial_dir=excluded.partial_dir,
+  partial_suffix=excluded.partial_suffix,
   ignore_extensions=excluded.ignore_extensions,
   bwlimit=excluded.bwlimit,
   daily_limit_bytes=excluded.daily_limit_bytes,
@@ -120,7 +132,8 @@ ON CONFLICT(id) DO UPDATE SET
   enabled=excluded.enabled,
   updated_at=excluded.updated_at
 `, r.ID, r.LimitGroup, r.SrcKind, r.SrcRemote, r.SrcPath, r.SrcLocalRoot, boolToInt(r.LocalWatch),
-		r.DstRemote, r.DstPath, r.TransferMode, r.RcloneExtraArgs, r.IgnoreExtensions, r.Bwlimit,
+		r.DstRemote, r.DstPath, r.TransferMode, r.RcloneExtraArgs, boolToInt(r.ResumeEnabled), r.PartialDir, r.PartialSuffix,
+		r.IgnoreExtensions, r.Bwlimit,
 		r.DailyLimitBytes, r.MinFileSizeBytes, boolToInt(r.IsManual),
 		r.MaxParallelJobs, r.ScanIntervalSec, r.StableSeconds, r.BatchSize, boolToInt(r.Enabled),
 		now, now,
@@ -139,7 +152,8 @@ func (s *Store) GetRulesByGroup(ctx context.Context, group string) ([]Rule, erro
 	}
 	rows, err := s.db.QueryContext(ctx, `
 SELECT id, limit_group, src_kind, src_remote, src_path, src_local_root, local_watch_enabled,
-       dst_remote, dst_path, transfer_mode, rclone_extra_args, ignore_extensions, bwlimit,
+       dst_remote, dst_path, transfer_mode, rclone_extra_args, resume_enabled, partial_dir, partial_suffix,
+       ignore_extensions, bwlimit,
        daily_limit_bytes, min_file_size_bytes, is_manual,
        max_parallel_jobs, scan_interval_sec, stable_seconds, batch_size, enabled,
        created_at, updated_at
@@ -155,11 +169,13 @@ WHERE limit_group=? AND is_manual=0
 		var r Rule
 		var enabled int
 		var watch int
+		var resumeEnabled int
 		var isManual int
 		var created, updated int64
 		if err := rows.Scan(
 			&r.ID, &r.LimitGroup, &r.SrcKind, &r.SrcRemote, &r.SrcPath, &r.SrcLocalRoot, &watch,
-			&r.DstRemote, &r.DstPath, &r.TransferMode, &r.RcloneExtraArgs, &r.IgnoreExtensions, &r.Bwlimit,
+			&r.DstRemote, &r.DstPath, &r.TransferMode, &r.RcloneExtraArgs, &resumeEnabled, &r.PartialDir, &r.PartialSuffix,
+			&r.IgnoreExtensions, &r.Bwlimit,
 			&r.DailyLimitBytes, &r.MinFileSizeBytes, &isManual,
 			&r.MaxParallelJobs, &r.ScanIntervalSec, &r.StableSeconds, &r.BatchSize, &enabled,
 			&created, &updated,
@@ -168,6 +184,7 @@ WHERE limit_group=? AND is_manual=0
 		}
 		r.Enabled = enabled != 0
 		r.LocalWatch = watch != 0
+		r.ResumeEnabled = resumeEnabled != 0
 		r.IsManual = isManual != 0
 		r.CreatedAt = time.Unix(created, 0)
 		r.UpdatedAt = time.Unix(updated, 0)

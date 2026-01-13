@@ -63,6 +63,9 @@ CREATE TABLE IF NOT EXISTS rules (
   dst_path TEXT NOT NULL,
   transfer_mode TEXT NOT NULL DEFAULT 'copy',
   rclone_extra_args TEXT NOT NULL DEFAULT '',
+  resume_enabled INTEGER NOT NULL DEFAULT 0,
+  partial_dir TEXT NOT NULL DEFAULT '',
+  partial_suffix TEXT NOT NULL DEFAULT '',
   bwlimit TEXT NOT NULL DEFAULT '',
   daily_limit_bytes INTEGER NOT NULL DEFAULT 0,
   min_file_size_bytes INTEGER NOT NULL DEFAULT 0,
@@ -156,6 +159,15 @@ CREATE TABLE IF NOT EXISTS settings (
 		return err
 	}
 	if err := s.ensureRuleColumn(ctx, "rclone_extra_args", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		return err
+	}
+	if err := s.ensureRuleColumn(ctx, "resume_enabled", "INTEGER NOT NULL DEFAULT 0"); err != nil {
+		return err
+	}
+	if err := s.ensureRuleColumn(ctx, "partial_dir", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		return err
+	}
+	if err := s.ensureRuleColumn(ctx, "partial_suffix", "TEXT NOT NULL DEFAULT ''"); err != nil {
 		return err
 	}
 	if err := s.ensureRuleColumn(ctx, "bwlimit", "TEXT NOT NULL DEFAULT ''"); err != nil {

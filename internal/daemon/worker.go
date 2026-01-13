@@ -492,6 +492,15 @@ func (w *ruleWorker) runWithMetrics(ctx context.Context, settings store.RuntimeS
 	if effectiveBwlimit != "" {
 		args = append(args, "--bwlimit", effectiveBwlimit)
 	}
+	if w.rule.ResumeEnabled {
+		args = append(args, "--partial")
+		if strings.TrimSpace(w.rule.PartialDir) != "" {
+			args = append(args, "--partial-dir", w.rule.PartialDir)
+		}
+		if strings.TrimSpace(w.rule.PartialSuffix) != "" {
+			args = append(args, "--partial-suffix", w.rule.PartialSuffix)
+		}
+	}
 	if w.rule.MinFileSizeBytes > 0 {
 		// When using --files-from/--files-from-raw, rclone forbids combining with any other filter options.
 		// min_file_size is already enforced by our scan/enqueue/claim logic for automatic jobs.

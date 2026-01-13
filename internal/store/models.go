@@ -76,6 +76,9 @@ type Rule struct {
 	DstPath         string
 	TransferMode    string
 	RcloneExtraArgs string
+	ResumeEnabled   bool
+	PartialDir      string
+	PartialSuffix   string
 	IgnoreExtensions string
 	Bwlimit         string
 	DailyLimitBytes int64
@@ -107,6 +110,8 @@ func (r *Rule) Normalize() error {
 	r.SrcLocalRoot = strings.TrimSpace(r.SrcLocalRoot)
 	r.TransferMode = strings.TrimSpace(strings.ToLower(r.TransferMode))
 	r.RcloneExtraArgs = strings.TrimSpace(r.RcloneExtraArgs)
+	r.PartialDir = strings.TrimSpace(r.PartialDir)
+	r.PartialSuffix = strings.TrimSpace(r.PartialSuffix)
 	r.IgnoreExtensions = strings.TrimSpace(r.IgnoreExtensions)
 	if r.TransferMode == "" {
 		r.TransferMode = "copy"

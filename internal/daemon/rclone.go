@@ -230,6 +230,15 @@ func runRcloneJob(ctx context.Context, rule store.Rule, settings store.RuntimeSe
 	if effectiveBwlimit != "" {
 		args = append(args, "--bwlimit", effectiveBwlimit)
 	}
+	if rule.ResumeEnabled {
+		args = append(args, "--partial")
+		if strings.TrimSpace(rule.PartialDir) != "" {
+			args = append(args, "--partial-dir", rule.PartialDir)
+		}
+		if strings.TrimSpace(rule.PartialSuffix) != "" {
+			args = append(args, "--partial-suffix", rule.PartialSuffix)
+		}
+	}
 	if strings.TrimSpace(rule.RcloneExtraArgs) != "" {
 		parsed, err := ParseRcloneArgs(rule.RcloneExtraArgs)
 		if err != nil {
