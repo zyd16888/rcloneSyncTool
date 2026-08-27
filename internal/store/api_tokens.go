@@ -192,6 +192,16 @@ func newAPITokenSecret() (string, error) {
 	return apiTokenPrefix + base64.RawURLEncoding.EncodeToString(raw[:]), nil
 }
 
+// NewCallbackSecret mints a shared HMAC secret. It lives next to token minting
+// so the page and the CLI cannot drift apart on entropy or encoding.
+func NewCallbackSecret() (string, error) {
+	var raw [32]byte
+	if _, err := rand.Read(raw[:]); err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(raw[:]), nil
+}
+
 func newTokenID() string {
 	var raw [8]byte
 	_, _ = rand.Read(raw[:])

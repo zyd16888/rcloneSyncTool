@@ -3,15 +3,15 @@ package server
 import (
 	"embed"
 	"encoding/json"
+	"fmt"
 	"html/template"
 	"io/fs"
 	"log"
 	"net/http"
 	"net/url"
 	"os"
-	"path/filepath"
 	"path"
-	"fmt"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -61,7 +61,7 @@ func New(st *store.Store, supervisor *daemon.Supervisor, logDir string, appLogPa
 			}
 			return t.Format("2006-01-02 15:04:05")
 		},
-		"hasPrefix": strings.HasPrefix,
+		"hasPrefix":  strings.HasPrefix,
 		"humanBytes": humanBytes,
 		"humanSpeed": humanSpeed,
 	}
@@ -150,6 +150,13 @@ func New(st *store.Store, supervisor *daemon.Supervisor, logDir string, appLogPa
 	r.GET("/logs", s.logsPage)
 	r.GET("/api/log/daemon/stream", s.apiDaemonLogStream)
 
+	r.GET("/api-access", s.apiAccessPage)
+	r.POST("/api-access/tokens/create", s.apiTokenCreatePost)
+	r.POST("/api-access/tokens/toggle", s.apiTokenTogglePost)
+	r.POST("/api-access/tokens/delete", s.apiTokenDeletePost)
+	r.POST("/api-access/callback-secret/rotate", s.callbackSecretRotatePost)
+	r.POST("/api-access/callback-secret/clear", s.callbackSecretClearPost)
+
 	r.GET("/settings", s.settingsGet)
 	r.POST("/settings/save", s.settingsSavePost)
 	r.GET("/api/rclone/check", s.apiRcloneCheck)
@@ -182,10 +189,10 @@ func (s *Server) redirect(c *gin.Context, p string) {
 func (s *Server) dashboard(c *gin.Context) {
 	ctx := c.Request.Context()
 	rules, _ := s.st.ListRules(ctx)
-		// Pre-calculate group stats to avoid N+1
-		groupUsage := map[string]int64{}
-		groupLimit := map[string]int64{}
-		
+	// Pre-calculate group stats to avoid N+1
+	groupUsage := map[string]int64{}
+	groupLimit := map[string]int64{}
+
 	lgs, _ := s.st.ListLimitGroups(ctx)
 	for _, lg := range lgs {
 		groupLimit[lg.Name] = lg.DailyLimitBytes
@@ -194,9 +201,9 @@ func (s *Server) dashboard(c *gin.Context) {
 	}
 
 	type ruleRow struct {
-		Rule   store.Rule
-		Counts store.FileStateCounts
-		Usage24h int64
+		Rule       store.Rule
+		Counts     store.FileStateCounts
+		Usage24h   int64
 		GroupLimit int64
 	}
 	var rows []ruleRow
@@ -247,7 +254,7 @@ func (s *Server) dashboard(c *gin.Context) {
 	totalBytes, _ := s.st.TotalBytesDone(ctx)
 	totalSpeed, _ := s.st.TotalSpeedRunning(ctx)
 	runningJobs, _ := s.st.CountRunningJobsAll(ctx)
-	
+
 	now := time.Now()
 	todayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 	bytesToday, _ := s.st.StatsBytesSince(ctx, todayStart)
@@ -274,26 +281,26 @@ func (s *Server) dashboard(c *gin.Context) {
 	hasPrev := jobsPage > 1
 	hasNext := jobsPage < totalPages
 	s.render(c, "dashboard", map[string]any{
-		"Active":   "dashboard",
-		"Rules":    rows,
-		"EnabledRules": enabledRows,
-		"Jobs":     jobRows,
-		"LogDir":   s.logDir,
-		"TotalBytes": totalBytes,
-		"TotalSpeed": totalSpeed,
-		"RunningJobs": runningJobs,
-		"BytesToday": bytesToday,
-		"Bytes24h":   bytes24h,
-		"LimitGroups": groupStats,
-		"RcloneConfig": settings.RcloneConfigPath,
-		"JobsPage":      jobsPage,
-		"JobsPageSize":  jobsPageSize,
-		"JobsTotal":     totalJobs,
+		"Active":         "dashboard",
+		"Rules":          rows,
+		"EnabledRules":   enabledRows,
+		"Jobs":           jobRows,
+		"LogDir":         s.logDir,
+		"TotalBytes":     totalBytes,
+		"TotalSpeed":     totalSpeed,
+		"RunningJobs":    runningJobs,
+		"BytesToday":     bytesToday,
+		"Bytes24h":       bytes24h,
+		"LimitGroups":    groupStats,
+		"RcloneConfig":   settings.RcloneConfigPath,
+		"JobsPage":       jobsPage,
+		"JobsPageSize":   jobsPageSize,
+		"JobsTotal":      totalJobs,
 		"JobsTotalPages": totalPages,
-		"JobsHasPrev":   hasPrev,
-		"JobsHasNext":   hasNext,
-		"JobsPrevURL":   fmt.Sprintf("/?jobs_page=%d&jobs_page_size=%d", maxInt(1, jobsPage-1), jobsPageSize),
-		"JobsNextURL":   fmt.Sprintf("/?jobs_page=%d&jobs_page_size=%d", minInt(totalPages, jobsPage+1), jobsPageSize),
+		"JobsHasPrev":    hasPrev,
+		"JobsHasNext":    hasNext,
+		"JobsPrevURL":    fmt.Sprintf("/?jobs_page=%d&jobs_page_size=%d", maxInt(1, jobsPage-1), jobsPageSize),
+		"JobsNextURL":    fmt.Sprintf("/?jobs_page=%d&jobs_page_size=%d", minInt(totalPages, jobsPage+1), jobsPageSize),
 	})
 }
 
@@ -311,8 +318,8 @@ func (s *Server) rulesList(c *gin.Context) {
 	ctx := c.Request.Context()
 	rules, _ := s.st.ListRules(ctx)
 	type ruleRow struct {
-		Rule   store.Rule
-		Counts store.FileStateCounts
+		Rule     store.Rule
+		Counts   store.FileStateCounts
 		Usage24h int64
 	}
 
@@ -324,7 +331,7 @@ func (s *Server) rulesList(c *gin.Context) {
 	}
 	s.render(c, "rules", map[string]any{
 		"Active": "rules",
-		"Rules": rows,
+		"Rules":  rows,
 	})
 }
 
@@ -341,7 +348,7 @@ func (s *Server) ruleEditGet(c *gin.Context) {
 	} else if copyFromID != "" {
 		if got, ok, _ := s.st.GetRule(ctx, copyFromID); ok {
 			rule = got
-			rule.ID = ""       // Force new ID
+			rule.ID = ""         // Force new ID
 			rule.Enabled = false // Default to disabled for safety
 		}
 	}
@@ -361,13 +368,13 @@ func (s *Server) ruleEditGet(c *gin.Context) {
 	limitGroups, _ := s.st.ListLimitGroups(ctx)
 	presets, _ := s.st.ListExtensionPresets(ctx)
 	s.render(c, "rule_edit", map[string]any{
-		"Active":  "rules",
-		"Rule":    rule,
-		"Remotes": remotes,
-		"Rules":   rules,
+		"Active":      "rules",
+		"Rule":        rule,
+		"Remotes":     remotes,
+		"Rules":       rules,
 		"LimitGroups": limitGroups,
-		"Presets": presets,
-		"Error":   errString(err),
+		"Presets":     presets,
+		"Error":       errString(err),
 	})
 }
 
@@ -375,7 +382,7 @@ func (s *Server) limitGroupsList(c *gin.Context) {
 	ctx := c.Request.Context()
 	groups, _ := s.st.ListLimitGroups(ctx)
 	rules, _ := s.st.ListRules(ctx)
-	
+
 	// Map group -> []ruleID for JS pre-filling
 	groupRulesMap := map[string][]string{}
 	for _, r := range rules {
@@ -385,9 +392,9 @@ func (s *Server) limitGroupsList(c *gin.Context) {
 	}
 
 	s.render(c, "limit_groups", map[string]any{
-		"Active": "rules", 
-		"Groups": groups,
-		"Rules": rules,
+		"Active":        "rules",
+		"Groups":        groups,
+		"Rules":         rules,
 		"GroupRulesMap": groupRulesMap,
 	})
 }
@@ -408,7 +415,7 @@ func (s *Server) limitGroupsSavePost(c *gin.Context) {
 		c.String(http.StatusBadRequest, err.Error())
 		return
 	}
-	
+
 	// Update associated rules
 	ruleIDs := c.PostFormArray("rule_ids")
 	if err := s.st.SetRulesForLimitGroup(ctx, name, ruleIDs); err != nil {
@@ -582,31 +589,31 @@ func (s *Server) ruleSavePost(c *gin.Context) {
 		}
 	}
 	rule := store.Rule{
-		ID:              c.PostForm("id"),
-		LimitGroup:      strings.TrimSpace(c.PostForm("limit_group")),
-		SrcKind:         c.PostForm("src_kind"),
-		SrcRemote:       c.PostForm("src_remote"),
-		SrcPath:         c.PostForm("src_path"),
-		SrcLocalRoot:    c.PostForm("src_local_root"),
-		LocalWatch:      store.ParseEnabled(c.PostForm("local_watch_enabled")),
-		DstRemote:       c.PostForm("dst_remote"),
-		DstPath:         c.PostForm("dst_path"),
-		TransferMode:    c.PostForm("transfer_mode"),
-		RcloneExtraArgs: c.PostForm("rclone_extra_args"),
-		ResumeEnabled:   store.ParseEnabled(c.PostForm("resume_enabled")),
-		PartialDir:      strings.TrimSpace(c.PostForm("partial_dir")),
-		PartialSuffix:   strings.TrimSpace(c.PostForm("partial_suffix")),
-		IgnoreExtensions: c.PostForm("ignore_extensions"),
-		Bwlimit:         c.PostForm("bwlimit"),
-		DailyLimitBytes: dailyLimit,
-		MinFileSizeBytes: minSize,
-		APIEnabled:      store.ParseEnabled(c.PostForm("api_enabled")),
+		ID:                   c.PostForm("id"),
+		LimitGroup:           strings.TrimSpace(c.PostForm("limit_group")),
+		SrcKind:              c.PostForm("src_kind"),
+		SrcRemote:            c.PostForm("src_remote"),
+		SrcPath:              c.PostForm("src_path"),
+		SrcLocalRoot:         c.PostForm("src_local_root"),
+		LocalWatch:           store.ParseEnabled(c.PostForm("local_watch_enabled")),
+		DstRemote:            c.PostForm("dst_remote"),
+		DstPath:              c.PostForm("dst_path"),
+		TransferMode:         c.PostForm("transfer_mode"),
+		RcloneExtraArgs:      c.PostForm("rclone_extra_args"),
+		ResumeEnabled:        store.ParseEnabled(c.PostForm("resume_enabled")),
+		PartialDir:           strings.TrimSpace(c.PostForm("partial_dir")),
+		PartialSuffix:        strings.TrimSpace(c.PostForm("partial_suffix")),
+		IgnoreExtensions:     c.PostForm("ignore_extensions"),
+		Bwlimit:              c.PostForm("bwlimit"),
+		DailyLimitBytes:      dailyLimit,
+		MinFileSizeBytes:     minSize,
+		APIEnabled:           store.ParseEnabled(c.PostForm("api_enabled")),
 		APIAllowedOperations: strings.TrimSpace(c.PostForm("api_allowed_operations")),
-		MaxParallelJobs: atoiDefault(c.PostForm("max_parallel_jobs"), 1),
-		ScanIntervalSec: atoiDefault(c.PostForm("scan_interval_sec"), 15),
-		StableSeconds:   atoiDefault(c.PostForm("stable_seconds"), 60),
-		BatchSize:       atoiDefault(c.PostForm("batch_size"), 100),
-		Enabled:         store.ParseEnabled(c.PostForm("enabled")),
+		MaxParallelJobs:      atoiDefault(c.PostForm("max_parallel_jobs"), 1),
+		ScanIntervalSec:      atoiDefault(c.PostForm("scan_interval_sec"), 15),
+		StableSeconds:        atoiDefault(c.PostForm("stable_seconds"), 60),
+		BatchSize:            atoiDefault(c.PostForm("batch_size"), 100),
+		Enabled:              store.ParseEnabled(c.PostForm("enabled")),
 	}
 	if err := s.st.UpsertRule(ctx, rule); err != nil {
 		c.String(http.StatusBadRequest, err.Error())
@@ -697,19 +704,19 @@ func (s *Server) jobsList(c *gin.Context) {
 	prevURL := s.jobsListURL(page-1, pageSize, filter)
 	nextURL := s.jobsListURL(page+1, pageSize, filter)
 	s.render(c, "jobs", map[string]any{
-		"Active": "jobs",
-		"Jobs": rows,
-		"Rules": rules,
-		"F": filter,
-		"SelfURL": c.Request.URL.RequestURI(),
-		"Page": page,
-		"PageSize": pageSize,
-		"Total": total,
+		"Active":     "jobs",
+		"Jobs":       rows,
+		"Rules":      rules,
+		"F":          filter,
+		"SelfURL":    c.Request.URL.RequestURI(),
+		"Page":       page,
+		"PageSize":   pageSize,
+		"Total":      total,
 		"TotalPages": totalPages,
-		"HasPrev": hasPrev,
-		"HasNext": hasNext,
-		"PrevURL": prevURL,
-		"NextURL": nextURL,
+		"HasPrev":    hasPrev,
+		"HasNext":    hasNext,
+		"PrevURL":    prevURL,
+		"NextURL":    nextURL,
 	})
 }
 
@@ -788,8 +795,8 @@ func (s *Server) jobView(c *gin.Context) {
 	rule, _, _ := s.st.GetRule(ctx, job.RuleID)
 	s.render(c, "job_view", map[string]any{
 		"Active": "jobs",
-		"Job":  job,
-		"Rule": rule,
+		"Job":    job,
+		"Rule":   rule,
 	})
 }
 
@@ -805,8 +812,8 @@ func (s *Server) apiJob(c *gin.Context) {
 	doneCount, doneErr := s.jobDoneCount(job.JobID, job.LogPath)
 	c.Writer.Header().Set("Content-Type", "application/json; charset=utf-8")
 	_ = json.NewEncoder(c.Writer).Encode(map[string]any{
-		"job":     job,
-		"metric":  metric,
+		"job":       job,
+		"metric":    metric,
 		"hasMetric": hasM,
 		"doneCount": doneCount,
 		"doneError": doneErr,
@@ -828,13 +835,13 @@ func (s *Server) apiStatsNow(c *gin.Context) {
 
 	c.Writer.Header().Set("Content-Type", "application/json; charset=utf-8")
 	_ = json.NewEncoder(c.Writer).Encode(map[string]any{
-		"ts": time.Now().UnixMilli(),
-		"ruleID": ruleID,
-		"bytesTotal": sum.BytesTotal,
-		"speedTotal": sum.SpeedTotal,
+		"ts":          time.Now().UnixMilli(),
+		"ruleID":      ruleID,
+		"bytesTotal":  sum.BytesTotal,
+		"speedTotal":  sum.SpeedTotal,
 		"runningJobs": sum.RunningJobs,
-		"bytesToday": bytesToday,
-		"bytes24h":   bytes24h,
+		"bytesToday":  bytesToday,
+		"bytes24h":    bytes24h,
 	})
 }
 
@@ -849,8 +856,8 @@ func (s *Server) apiJobTransfers(c *gin.Context) {
 	if job.Status != "running" || job.RcPort <= 0 {
 		c.Writer.Header().Set("Content-Type", "application/json; charset=utf-8")
 		_ = json.NewEncoder(c.Writer).Encode(map[string]any{
-			"jobID": job.JobID,
-			"running": false,
+			"jobID":     job.JobID,
+			"running":   false,
 			"transfers": []any{},
 		})
 		return
@@ -859,17 +866,17 @@ func (s *Server) apiJobTransfers(c *gin.Context) {
 	c.Writer.Header().Set("Content-Type", "application/json; charset=utf-8")
 	if err != nil {
 		_ = json.NewEncoder(c.Writer).Encode(map[string]any{
-			"jobID": job.JobID,
-			"running": true,
-			"error": err.Error(),
+			"jobID":     job.JobID,
+			"running":   true,
+			"error":     err.Error(),
 			"transfers": []any{},
 		})
 		return
 	}
 	_ = json.NewEncoder(c.Writer).Encode(map[string]any{
-		"jobID": job.JobID,
-		"running": true,
-		"source": source,
+		"jobID":     job.JobID,
+		"running":   true,
+		"source":    source,
 		"transfers": transfers,
 	})
 }
@@ -882,9 +889,9 @@ func (s *Server) settingsGet(c *gin.Context) {
 		m[kv.Key] = kv.Value
 	}
 	s.render(c, "settings", map[string]any{
-		"Active":   "settings",
-		"S":        m,
-		"LogDir":   s.logDir,
+		"Active": "settings",
+		"S":      m,
+		"LogDir": s.logDir,
 	})
 }
 

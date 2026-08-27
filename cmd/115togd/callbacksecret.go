@@ -2,13 +2,13 @@ package main
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/base64"
 	"flag"
 	"fmt"
 	"io"
 	"os"
 	"strings"
+
+	"115togd/internal/store"
 )
 
 // runCallbackSecret manages the shared HMAC secret used to sign transfer
@@ -32,11 +32,10 @@ func runCallbackSecret(args []string) {
 
 	switch sub {
 	case "rotate":
-		raw := make([]byte, 32)
-		if _, err := rand.Read(raw); err != nil {
+		secret, err := store.NewCallbackSecret()
+		if err != nil {
 			exitErr("generate secret", err)
 		}
-		secret := base64.RawURLEncoding.EncodeToString(raw)
 		if err := st.SetCallbackSecret(ctx, secret); err != nil {
 			exitErr("save secret", err)
 		}
