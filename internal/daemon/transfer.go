@@ -195,6 +195,19 @@ func (s *Supervisor) runTransferJob(
 		return
 	}
 
+	// A single-file source needs a directory pair plus an explicit file list:
+	// `rclone move file dst` treats dst as the new file name, which would
+	// silently rename the media. Only the host that owns the filesystem can
+	// tell a file from a directory, so the decision is made here rather than
+	// guessed by the caller.
+	if len(spec.Files) == 0 && rule.SrcKind == "local" {
+		if parent, base, ok := splitSingleFileSource(effective.SrcLocalRoot); ok {
+			effective.SrcLocalRoot = parent
+			spec.Files = []store.TransferJobFile{{Path: base, State: "pending"}}
+			_ = s.st.ReplaceTransferJobFiles(ctx, job.JobID, spec.Files)
+		}
+	}
+
 	filesFrom := ""
 	if len(spec.Files) > 0 {
 		filesFrom = filepath.Join(jobDir, "files.txt")
@@ -278,6 +291,22 @@ func (s *Supervisor) runTransferJob(
 // URL is recorded but never delivered, and clients rely on polling.
 func (s *Supervisor) dispatchTransferCallback(ctx context.Context, jobID string) {
 	_ = s.st.SetTransferJobCallbackState(ctx, jobID, "pending")
+}
+
+// splitSingleFileSource reports the parent directory and name of a source that
+// resolves to a regular file. A missing or non-regular path keeps directory
+// semantics so a transient stat failure never rewrites the transfer.
+func splitSingleFileSource(path string) (string, string, bool) {
+	info, err := os.Stat(path)
+	if err != nil || info.IsDir() || !info.Mode().IsRegular() {
+		return "", "", false
+	}
+	parent := filepath.Dir(path)
+	base := filepath.Base(path)
+	if parent == "" || base == "" || base == "." {
+		return "", "", false
+	}
+	return parent, base, true
 }
 
 func joinRemotePath(root, sub string) string {
