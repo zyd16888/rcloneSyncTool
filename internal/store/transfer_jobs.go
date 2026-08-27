@@ -36,27 +36,29 @@ var ErrTransferJobNotFound = errors.New("transfer job not found")
 
 // TransferJob is a job row plus the fields only API-created jobs use.
 type TransferJob struct {
-	JobID          string
-	RuleID         string
-	Origin         string
-	TransferMode   string
-	Status         string
-	BlockReason    string
-	ExternalID     string
-	IdempotencyKey string
-	Fingerprint    string
-	RequestJSON    string
-	ResultJSON     string
-	CallbackURL    string
-	CallbackState  string
-	BytesDone      int64
-	AvgSpeed       float64
-	Error          string
-	LogPath        string
-	StartedAt      time.Time
-	EndedAt        time.Time
-	CreatedAt      time.Time
-	UpdatedAt      time.Time
+	JobID            string
+	RuleID           string
+	Origin           string
+	TransferMode     string
+	Status           string
+	BlockReason      string
+	ExternalID       string
+	IdempotencyKey   string
+	Fingerprint      string
+	RequestJSON      string
+	ResultJSON       string
+	CallbackURL      string
+	CallbackState    string
+	CallbackAttempts int
+	CallbackNextAt   time.Time
+	BytesDone        int64
+	AvgSpeed         float64
+	Error            string
+	LogPath          string
+	StartedAt        time.Time
+	EndedAt          time.Time
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
 }
 
 func (j TransferJob) Terminal() bool {
@@ -79,17 +81,19 @@ type TransferJobFile struct {
 const transferJobColumns = `job_id, rule_id, COALESCE(origin,''), transfer_mode, status,
 COALESCE(block_reason,''), COALESCE(external_id,''), COALESCE(idempotency_key,''),
 COALESCE(request_fingerprint,''), COALESCE(request_snapshot,''), COALESCE(result_snapshot,''),
-COALESCE(callback_url,''), COALESCE(callback_state,''), bytes_done, avg_speed, error, log_path,
+COALESCE(callback_url,''), COALESCE(callback_state,''), COALESCE(callback_attempts,0),
+COALESCE(callback_next_at,0), bytes_done, avg_speed, error, log_path,
 started_at, ended_at, COALESCE(created_at,0), COALESCE(updated_at,0)`
 
 func scanTransferJob(scan func(dest ...any) error) (TransferJob, error) {
 	var j TransferJob
-	var started, ended, created, updated int64
+	var started, ended, created, updated, callbackNextAt int64
 	err := scan(
 		&j.JobID, &j.RuleID, &j.Origin, &j.TransferMode, &j.Status,
 		&j.BlockReason, &j.ExternalID, &j.IdempotencyKey,
 		&j.Fingerprint, &j.RequestJSON, &j.ResultJSON,
-		&j.CallbackURL, &j.CallbackState, &j.BytesDone, &j.AvgSpeed, &j.Error, &j.LogPath,
+		&j.CallbackURL, &j.CallbackState, &j.CallbackAttempts, &callbackNextAt,
+		&j.BytesDone, &j.AvgSpeed, &j.Error, &j.LogPath,
 		&started, &ended, &created, &updated,
 	)
 	if err != nil {
@@ -104,6 +108,9 @@ func scanTransferJob(scan func(dest ...any) error) (TransferJob, error) {
 	}
 	if updated != 0 {
 		j.UpdatedAt = time.Unix(updated, 0)
+	}
+	if callbackNextAt != 0 {
+		j.CallbackNextAt = time.Unix(callbackNextAt, 0)
 	}
 	return j, nil
 }
@@ -280,6 +287,82 @@ func (s *Store) SetTransferJobCallbackState(ctx context.Context, jobID, state st
 	_, err := s.db.ExecContext(ctx,
 		`UPDATE jobs SET callback_state=?, updated_at=? WHERE job_id=?`,
 		state, nowUnix(), jobID)
+	return err
+}
+
+// CallbackSecretKey is the settings row holding the shared HMAC secret. The
+// same value is configured independently on the receiving side; it is never
+// transmitted, only used to sign and verify.
+const CallbackSecretKey = "callback_hmac_secret"
+
+func (s *Store) CallbackSecret(ctx context.Context) (string, error) {
+	value, ok, err := s.Setting(ctx, CallbackSecretKey)
+	if err != nil || !ok {
+		return "", err
+	}
+	return strings.TrimSpace(value), nil
+}
+
+func (s *Store) SetCallbackSecret(ctx context.Context, secret string) error {
+	return s.SetSetting(ctx, CallbackSecretKey, strings.TrimSpace(secret))
+}
+
+// DueCallbackJobs lists terminal API jobs whose client has not been notified
+// yet. Selecting from persisted state is what lets delivery resume after a
+// crash between finishing a job and notifying its owner.
+func (s *Store) DueCallbackJobs(
+	ctx context.Context,
+	now time.Time,
+	maxAttempts int,
+	limit int,
+) ([]TransferJob, error) {
+	if limit <= 0 {
+		limit = 20
+	}
+	rows, err := s.db.QueryContext(ctx, `
+SELECT `+transferJobColumns+`
+FROM jobs
+WHERE origin=?
+  AND callback_url <> ''
+  AND status IN (?, ?, ?)
+  AND COALESCE(callback_state,'') NOT IN ('delivered', 'abandoned', 'invalid_url')
+  AND COALESCE(callback_attempts,0) < ?
+  AND COALESCE(callback_next_at,0) <= ?
+ORDER BY COALESCE(callback_next_at,0) ASC, job_id ASC
+LIMIT ?
+`, OriginAPI, TransferStatusDone, TransferStatusFailed, TransferStatusTerminated,
+		maxAttempts, now.Unix(), limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []TransferJob
+	for rows.Next() {
+		job, err := scanTransferJob(rows.Scan)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, job)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) RecordCallbackAttempt(
+	ctx context.Context,
+	jobID string,
+	state string,
+	attempts int,
+	nextAt time.Time,
+) error {
+	var next int64
+	if !nextAt.IsZero() {
+		next = nextAt.Unix()
+	}
+	_, err := s.db.ExecContext(ctx, `
+UPDATE jobs
+SET callback_state=?, callback_attempts=?, callback_next_at=?, updated_at=?
+WHERE job_id=?
+`, state, attempts, next, nowUnix(), jobID)
 	return err
 }
 

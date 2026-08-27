@@ -153,7 +153,7 @@ func (s *Server) apiV1Capabilities(c *gin.Context) {
 			"logs_cursor":   true,
 			"cancel":        true,
 			"retry":         true,
-			"callback_hmac": false,
+			"callback_hmac": true,
 		},
 		"limits": gin.H{
 			"max_files":         apiMaxFilesPerJob,

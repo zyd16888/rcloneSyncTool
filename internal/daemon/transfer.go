@@ -287,10 +287,17 @@ func (s *Supervisor) runTransferJob(
 	}
 }
 
-// dispatchTransferCallback is wired in EXT-03. Until then a configured callback
-// URL is recorded but never delivered, and clients rely on polling.
+// dispatchTransferCallback queues one delivery attempt. The queue owns retries
+// so a slow or unreachable receiver never blocks the transfer worker.
 func (s *Supervisor) dispatchTransferCallback(ctx context.Context, jobID string) {
-	_ = s.st.SetTransferJobCallbackState(ctx, jobID, "pending")
+	if err := s.st.SetTransferJobCallbackState(ctx, jobID, "pending"); err != nil {
+		return
+	}
+	job, ok, err := s.st.GetTransferJob(ctx, jobID)
+	if err != nil || !ok {
+		return
+	}
+	go s.deliverCallback(ctx, job)
 }
 
 // splitSingleFileSource reports the parent directory and name of a source that

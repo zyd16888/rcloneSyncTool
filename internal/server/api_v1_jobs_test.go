@@ -483,8 +483,8 @@ func TestCapabilitiesAdvertiseTheJobApi(t *testing.T) {
 			t.Fatalf("feature %s must be advertised once the job API ships", key)
 		}
 	}
-	if features["callback_hmac"] != false {
-		t.Fatal("callback_hmac must stay false until callbacks ship")
+	if features["callback_hmac"] != true {
+		t.Fatal("callback_hmac must be advertised once signed callbacks ship")
 	}
 }
 

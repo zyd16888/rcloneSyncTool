@@ -218,6 +218,8 @@ CREATE TABLE IF NOT EXISTS settings (
 		{"result_snapshot", "TEXT NOT NULL DEFAULT ''"},
 		{"callback_url", "TEXT NOT NULL DEFAULT ''"},
 		{"callback_state", "TEXT NOT NULL DEFAULT ''"},
+		{"callback_attempts", "INTEGER NOT NULL DEFAULT 0"},
+		{"callback_next_at", "INTEGER NOT NULL DEFAULT 0"},
 		{"block_reason", "TEXT NOT NULL DEFAULT ''"},
 		{"created_at", "INTEGER NOT NULL DEFAULT 0"},
 		{"updated_at", "INTEGER NOT NULL DEFAULT 0"},

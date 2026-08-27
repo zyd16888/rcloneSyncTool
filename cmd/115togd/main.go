@@ -30,6 +30,10 @@ func main() {
 		runAPIToken(os.Args[2:])
 		return
 	}
+	if len(os.Args) >= 2 && os.Args[1] == "callbacksecret" {
+		runCallbackSecret(os.Args[2:])
+		return
+	}
 
 	var (
 		listenAddr = flag.String("listen", "127.0.0.1:8080", "HTTP listen address")
@@ -94,6 +98,7 @@ func main() {
 	supervisor := daemon.NewSupervisor(st)
 	go supervisor.Run(ctx)
 	go supervisor.StartTransferQueue(ctx)
+	go supervisor.StartCallbackQueue(ctx)
 	go daemon.StartLogJanitor(ctx, st)
 
 	handler := server.New(st, supervisor, logDir, appLogPath)
