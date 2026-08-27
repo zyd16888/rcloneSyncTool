@@ -148,11 +148,11 @@ func (s *Server) apiV1Capabilities(c *gin.Context) {
 		// integration this deployment carries, instead of probing endpoints
 		// and interpreting a 404 as "unsupported" or "misrouted".
 		"features": gin.H{
-			"transfer_jobs": false,
-			"files_list":    false,
-			"logs_cursor":   false,
-			"cancel":        false,
-			"retry":         false,
+			"transfer_jobs": true,
+			"files_list":    true,
+			"logs_cursor":   true,
+			"cancel":        true,
+			"retry":         true,
 			"callback_hmac": false,
 		},
 		"limits": gin.H{

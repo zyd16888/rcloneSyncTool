@@ -93,6 +93,7 @@ func main() {
 
 	supervisor := daemon.NewSupervisor(st)
 	go supervisor.Run(ctx)
+	go supervisor.StartTransferQueue(ctx)
 	go daemon.StartLogJanitor(ctx, st)
 
 	handler := server.New(st, supervisor, logDir, appLogPath)

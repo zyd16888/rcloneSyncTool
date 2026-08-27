@@ -56,6 +56,25 @@ func (g *GlobalLimiter) Acquire(ctx context.Context) bool {
 	}
 }
 
+// TryAcquire takes a slot without waiting. The transfer queue uses it so a
+// busy host leaves the job untouched for the next tick instead of parking a
+// goroutine on a semaphore.
+func (g *GlobalLimiter) TryAcquire() bool {
+	limit := atomic.LoadInt64(&g.limit)
+	if limit <= 0 {
+		return true
+	}
+	if int64(len(g.sem)) >= limit {
+		return false
+	}
+	select {
+	case g.sem <- struct{}{}:
+		return true
+	default:
+		return false
+	}
+}
+
 func (g *GlobalLimiter) Release() {
 	select {
 	case <-g.sem:

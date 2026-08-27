@@ -99,6 +99,13 @@ func New(st *store.Store, supervisor *daemon.Supervisor, logDir string, appLogPa
 	v1.GET("/version", s.apiV1Version)
 	v1.GET("/capabilities", s.apiV1Capabilities)
 	v1.GET("/health", s.apiV1Health)
+	v1.POST("/transfer-jobs", s.createTransferJob)
+	v1.GET("/transfer-jobs/:id", s.getTransferJob)
+	v1.GET("/transfer-jobs/by-external-id/:external_id", s.getTransferJobByExternalID)
+	v1.GET("/transfer-jobs/:id/files", s.listTransferJobFiles)
+	v1.GET("/transfer-jobs/:id/logs", s.getTransferJobLogs)
+	v1.POST("/transfer-jobs/:id/cancel", s.cancelTransferJob)
+	v1.POST("/transfer-jobs/:id/retry", s.retryTransferJob)
 
 	r.Use(s.authMiddleware())
 

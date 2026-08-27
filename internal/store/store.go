@@ -117,6 +117,16 @@ CREATE TABLE IF NOT EXISTS jobs (
 
 CREATE INDEX IF NOT EXISTS jobs_rule_idx ON jobs(rule_id, status);
 
+CREATE TABLE IF NOT EXISTS transfer_job_files (
+  job_id TEXT NOT NULL,
+  path TEXT NOT NULL,
+  size INTEGER NOT NULL DEFAULT 0,
+  state TEXT NOT NULL DEFAULT 'pending',
+  last_error TEXT NOT NULL DEFAULT '',
+  PRIMARY KEY (job_id, path),
+  FOREIGN KEY (job_id) REFERENCES jobs(job_id) ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS job_metrics (
   job_id TEXT NOT NULL,
   ts INTEGER NOT NULL,
@@ -196,13 +206,58 @@ CREATE TABLE IF NOT EXISTS settings (
 	if err := s.ensureRuleColumn(ctx, "api_allowed_operations", "TEXT NOT NULL DEFAULT ''"); err != nil {
 		return err
 	}
+
+	// API-created transfer jobs share the jobs table so limit groups, quota
+	// accounting and the job list keep working for them unchanged.
+	for _, col := range [][2]string{
+		{"origin", "TEXT NOT NULL DEFAULT 'scheduler'"},
+		{"external_id", "TEXT NOT NULL DEFAULT ''"},
+		{"idempotency_key", "TEXT NOT NULL DEFAULT ''"},
+		{"request_fingerprint", "TEXT NOT NULL DEFAULT ''"},
+		{"request_snapshot", "TEXT NOT NULL DEFAULT ''"},
+		{"result_snapshot", "TEXT NOT NULL DEFAULT ''"},
+		{"callback_url", "TEXT NOT NULL DEFAULT ''"},
+		{"callback_state", "TEXT NOT NULL DEFAULT ''"},
+		{"block_reason", "TEXT NOT NULL DEFAULT ''"},
+		{"created_at", "INTEGER NOT NULL DEFAULT 0"},
+		{"updated_at", "INTEGER NOT NULL DEFAULT 0"},
+	} {
+		if err := s.ensureJobColumn(ctx, col[0], col[1]); err != nil {
+			return err
+		}
+	}
+
+	// Partial unique indexes: scheduler and manual jobs leave both keys empty,
+	// so only API jobs are constrained. This is what makes a replayed submit
+	// fail at the database instead of starting a second transfer.
+	for _, ddl := range []string{
+		`CREATE UNIQUE INDEX IF NOT EXISTS jobs_idempotency_key_idx
+		   ON jobs(idempotency_key) WHERE idempotency_key <> ''`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS jobs_external_id_idx
+		   ON jobs(external_id) WHERE external_id <> ''`,
+		`CREATE INDEX IF NOT EXISTS jobs_origin_status_idx ON jobs(origin, status)`,
+	} {
+		if _, err := s.db.ExecContext(ctx, ddl); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
 func nowUnix() int64 { return time.Now().Unix() }
 
+func (s *Store) ensureJobColumn(ctx context.Context, col, ddl string) error {
+	return s.ensureColumn(ctx, "jobs", col, ddl)
+}
+
 func (s *Store) ensureRuleColumn(ctx context.Context, col, ddl string) error {
-	rows, err := s.db.QueryContext(ctx, `PRAGMA table_info(rules)`)
+	return s.ensureColumn(ctx, "rules", col, ddl)
+}
+
+// ensureColumn adds a column when an existing database predates it. The table
+// name is a compile-time constant from this package, never caller input.
+func (s *Store) ensureColumn(ctx context.Context, table, col, ddl string) error {
+	rows, err := s.db.QueryContext(ctx, `PRAGMA table_info(`+table+`)`)
 	if err != nil {
 		return err
 	}
@@ -223,7 +278,7 @@ func (s *Store) ensureRuleColumn(ctx context.Context, col, ddl string) error {
 	if err := rows.Err(); err != nil {
 		return err
 	}
-	_, err = s.db.ExecContext(ctx, `ALTER TABLE rules ADD COLUMN `+col+` `+ddl)
+	_, err = s.db.ExecContext(ctx, `ALTER TABLE `+table+` ADD COLUMN `+col+` `+ddl)
 	return err
 }
 

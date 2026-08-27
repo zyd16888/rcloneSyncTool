@@ -186,8 +186,8 @@ func TestAPIV1CapabilitiesOnlyExposesOptedInRules(t *testing.T) {
 	}
 
 	features, _ := body["features"].(map[string]any)
-	if features["transfer_jobs"] != false {
-		t.Fatal("transfer_jobs must stay false until the job API ships")
+	if _, ok := features["transfer_jobs"]; !ok {
+		t.Fatal("capabilities must advertise the transfer_jobs feature flag")
 	}
 	limits, _ := body["limits"].(map[string]any)
 	if limits["max_files"] != float64(apiMaxFilesPerJob) {
