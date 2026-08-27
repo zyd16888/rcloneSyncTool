@@ -26,6 +26,10 @@ func main() {
 		runPasswd(os.Args[2:])
 		return
 	}
+	if len(os.Args) >= 2 && os.Args[1] == "apitoken" {
+		runAPIToken(os.Args[2:])
+		return
+	}
 
 	var (
 		listenAddr = flag.String("listen", "127.0.0.1:8080", "HTTP listen address")

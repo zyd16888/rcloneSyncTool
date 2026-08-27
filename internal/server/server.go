@@ -92,6 +92,14 @@ func New(st *store.Store, supervisor *daemon.Supervisor, logDir string, appLogPa
 	r.POST("/login", s.loginPost)
 	r.POST("/logout", s.logoutPost)
 
+	// Machine API. Registered before the cookie middleware so it carries only
+	// bearer authentication; gin copies the parent handler chain when the group
+	// is created, so a later r.Use cannot leak session auth into these routes.
+	v1 := r.Group("/api/v1", s.apiTokenMiddleware())
+	v1.GET("/version", s.apiV1Version)
+	v1.GET("/capabilities", s.apiV1Capabilities)
+	v1.GET("/health", s.apiV1Health)
+
 	r.Use(s.authMiddleware())
 
 	r.GET("/", s.dashboard)
@@ -585,6 +593,8 @@ func (s *Server) ruleSavePost(c *gin.Context) {
 		Bwlimit:         c.PostForm("bwlimit"),
 		DailyLimitBytes: dailyLimit,
 		MinFileSizeBytes: minSize,
+		APIEnabled:      store.ParseEnabled(c.PostForm("api_enabled")),
+		APIAllowedOperations: strings.TrimSpace(c.PostForm("api_allowed_operations")),
 		MaxParallelJobs: atoiDefault(c.PostForm("max_parallel_jobs"), 1),
 		ScanIntervalSec: atoiDefault(c.PostForm("scan_interval_sec"), 15),
 		StableSeconds:   atoiDefault(c.PostForm("stable_seconds"), 60),

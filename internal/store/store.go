@@ -70,6 +70,8 @@ CREATE TABLE IF NOT EXISTS rules (
   daily_limit_bytes INTEGER NOT NULL DEFAULT 0,
   min_file_size_bytes INTEGER NOT NULL DEFAULT 0,
   is_manual INTEGER NOT NULL DEFAULT 0,
+  api_enabled INTEGER NOT NULL DEFAULT 0,
+  api_allowed_operations TEXT NOT NULL DEFAULT '',
   max_parallel_jobs INTEGER NOT NULL DEFAULT 1,
   scan_interval_sec INTEGER NOT NULL DEFAULT 15,
   stable_seconds INTEGER NOT NULL DEFAULT 60,
@@ -186,6 +188,12 @@ CREATE TABLE IF NOT EXISTS settings (
 		return err
 	}
 	if err := s.ensureRuleColumn(ctx, "ignore_extensions", "TEXT NOT NULL DEFAULT ''"); err != nil {
+		return err
+	}
+	if err := s.ensureRuleColumn(ctx, "api_enabled", "INTEGER NOT NULL DEFAULT 0"); err != nil {
+		return err
+	}
+	if err := s.ensureRuleColumn(ctx, "api_allowed_operations", "TEXT NOT NULL DEFAULT ''"); err != nil {
 		return err
 	}
 	return nil

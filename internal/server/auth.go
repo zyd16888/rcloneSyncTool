@@ -128,6 +128,13 @@ func (s *Server) authMiddleware() gin.HandlerFunc {
 			c.Next()
 			return
 		}
+		// /api/v1 authenticates with bearer tokens and is mounted before this
+		// middleware. The guard is defensive: if route ordering ever changes,
+		// the machine API must still refuse to accept a browser session.
+		if strings.HasPrefix(p, "/api/v1/") {
+			c.Next()
+			return
+		}
 
 		cfg, err := s.uiAuthConfig(c)
 		if err != nil {

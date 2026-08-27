@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 )
 
 type LimitGroup struct {
@@ -84,6 +85,8 @@ type Rule struct {
 	DailyLimitBytes int64
 	MinFileSizeBytes int64
 	IsManual        bool
+	APIEnabled      bool
+	APIAllowedOperations string
 	MaxParallelJobs int
 	ScanIntervalSec int
 	StableSeconds   int
@@ -119,6 +122,11 @@ func (r *Rule) Normalize() error {
 	if r.TransferMode != "copy" && r.TransferMode != "move" {
 		return fmt.Errorf("invalid transfer_mode: %q", r.TransferMode)
 	}
+	normalizedOps, err := normalizeOperations(r.APIAllowedOperations)
+	if err != nil {
+		return err
+	}
+	r.APIAllowedOperations = normalizedOps
 	r.Bwlimit = strings.TrimSpace(r.Bwlimit)
 	if r.MinFileSizeBytes < 0 {
 		r.MinFileSizeBytes = 0
@@ -162,6 +170,62 @@ func (r *Rule) Normalize() error {
 		r.BatchSize = 100
 	}
 	return nil
+}
+
+// AllowedAPIOperations lists the transfer operations /api/v1 may request for
+// this rule. An empty allow-list means "only what the rule itself runs", which
+// keeps a rule from silently gaining a second behaviour when the API is opened.
+func (r *Rule) AllowedAPIOperations() []string {
+	ops := splitOperations(r.APIAllowedOperations)
+	if len(ops) == 0 {
+		mode := strings.TrimSpace(strings.ToLower(r.TransferMode))
+		if mode == "" {
+			mode = "copy"
+		}
+		return []string{mode}
+	}
+	return ops
+}
+
+// AllowsAPIOperation reports whether an API caller may request op on this rule.
+func (r *Rule) AllowsAPIOperation(op string) bool {
+	op = strings.TrimSpace(strings.ToLower(op))
+	for _, allowed := range r.AllowedAPIOperations() {
+		if allowed == op {
+			return true
+		}
+	}
+	return false
+}
+
+func splitOperations(raw string) []string {
+	var out []string
+	for _, part := range strings.FieldsFunc(raw, func(r rune) bool {
+		return r == ',' || unicode.IsSpace(r)
+	}) {
+		part = strings.TrimSpace(strings.ToLower(part))
+		if part == "" {
+			continue
+		}
+		out = append(out, part)
+	}
+	return out
+}
+
+func normalizeOperations(raw string) (string, error) {
+	seen := map[string]bool{}
+	var out []string
+	for _, op := range splitOperations(raw) {
+		if op != "copy" && op != "move" {
+			return "", fmt.Errorf("invalid api operation: %q", op)
+		}
+		if seen[op] {
+			continue
+		}
+		seen[op] = true
+		out = append(out, op)
+	}
+	return strings.Join(out, ","), nil
 }
 
 func cleanRemotePath(p string) string {

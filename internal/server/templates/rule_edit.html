@@ -229,6 +229,25 @@
 
         <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
           <label class="form-control">
+            <div class="label"><span class="label-text">开放给 API</span></div>
+            <label class="cursor-pointer flex items-center gap-2">
+              <input type="checkbox" name="api_enabled" value="1" class="checkbox" {{if .Rule.APIEnabled}}checked{{end}}>
+              <span class="label-text">允许 /api/v1 使用本规则</span>
+            </label>
+            <div class="label"><span class="label-text-alt opacity-70">关闭后外部系统无法引用本规则，已在运行的任务不受影响。</span></div>
+          </label>
+
+          <label class="form-control">
+            <div class="label"><span class="label-text">API 允许的操作</span></div>
+            <input type="text" name="api_allowed_operations" value="{{.Rule.APIAllowedOperations}}" class="input input-bordered" placeholder="留空 = 仅本规则的传输模式">
+            <div class="label"><span class="label-text-alt opacity-70">逗号分隔，仅支持 <code>copy</code>/<code>move</code>。</span></div>
+          </label>
+
+          <div></div>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <label class="form-control">
             <div class="label"><span class="label-text">扫描间隔（秒）</span></div>
             <input type="number" name="scan_interval_sec" value="{{.Rule.ScanIntervalSec}}" class="input input-bordered">
           </label>
