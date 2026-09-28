@@ -178,6 +178,11 @@ func (s *Supervisor) prepareAndRunTask(ctx context.Context, job store.TransferJo
 		fail(err)
 		return
 	}
+	var planned int64
+	for _, file := range spec.Files {
+		planned += file.Size
+	}
+	handle.ConfigureProgress(planned, planned-bytes, job.BytesDone)
 	s.executeTask(ctx, job, spec, settings, port, handle)
 }
 func (s *Supervisor) failWaitingTask(ctx context.Context, job store.TransferJob, message string) {

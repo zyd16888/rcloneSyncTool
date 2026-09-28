@@ -1,146 +1,44 @@
 {{define "content"}}
-<div class="space-y-4">
-  <div>
-    <h1 class="text-xl font-bold">系统设置</h1>
-    <div class="text-sm opacity-70">使用外部 rclone 配置文件（只需要 remote 名称即可调用）</div>
-  </div>
-
-  <div class="card bg-base-100 border border-base-200">
-    <div class="card-body">
-      <form method="post" action="/settings/save" class="space-y-4">
-        <label class="form-control">
-          <div class="label"><span class="label-text">配置路径</span></div>
-          <input type="text" name="rclone_config_path" value="{{index .S "rclone_config_path"}}" class="input input-bordered" placeholder="留空：使用 rclone 默认配置路径；填写：例如 C:\Users\you\AppData\Roaming\rclone\rclone.conf">
-          <div class="label"><span class="label-text-alt opacity-70">当前：{{.RcloneConfigPathDisplay}}</span></div>
-        </label>
-
-        <div class="divider">鉴权</div>
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <label class="form-control">
-            <div class="label"><span class="label-text">管理台新密码（留空不修改）</span></div>
-            <input type="password" name="ui_password" class="input input-bordered" autocomplete="new-password" placeholder="留空表示不修改">
-          </label>
-          <label class="form-control">
-            <div class="label"><span class="label-text">确认新密码</span></div>
-            <input type="password" name="ui_password2" class="input input-bordered" autocomplete="new-password" placeholder="再次输入新密码">
-          </label>
-        </div>
-
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <label class="form-control">
-            <div class="label"><span class="label-text">总并发</span></div>
-            <input type="number" name="global_max_jobs" value="{{index .S "global_max_jobs"}}" class="input input-bordered" placeholder="0 表示不限制">
-            <div class="label"><span class="label-text-alt opacity-70">限制全局同时运行的任务数（跨所有规则）。</span></div>
-          </label>
-          <label class="form-control">
-            <div class="label"><span class="label-text">日志保留（天）</span></div>
-            <input type="number" name="log_retention_days" value="{{index .S "log_retention_days"}}" class="input input-bordered" placeholder="默认 7；0 不清理">
-            <div class="label"><span class="label-text-alt opacity-70">清理多少天前的任务日志/临时目录。</span></div>
-          </label>
-          <label class="form-control">
-            <div class="label"><span class="label-text">bwlimit</span></div>
-            <input type="text" name="rclone_bwlimit" value="{{index .S "rclone_bwlimit"}}" class="input input-bordered" placeholder="例如 8M / 1.5M / 留空">
-            <div class="label"><span class="label-text-alt opacity-70">默认限速（规则里可覆盖）。</span></div>
-          </label>
-        </div>
-
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div class="grid grid-cols-2 gap-4">
-            <label class="form-control">
-              <div class="label"><span class="label-text">RC 起始</span></div>
-              <input type="number" name="rc_port_start" value="{{index .S "rc_port_start"}}" class="input input-bordered">
-            </label>
-            <label class="form-control">
-              <div class="label"><span class="label-text">RC 结束</span></div>
-              <input type="number" name="rc_port_end" value="{{index .S "rc_port_end"}}" class="input input-bordered">
-            </label>
-          </div>
-          <div class="grid grid-cols-2 gap-4">
-            <label class="form-control">
-              <div class="label"><span class="label-text">transfers</span></div>
-              <input type="number" name="rclone_transfers" value="{{index .S "rclone_transfers"}}" class="input input-bordered">
-            </label>
-            <label class="form-control">
-              <div class="label"><span class="label-text">checkers</span></div>
-              <input type="number" name="rclone_checkers" value="{{index .S "rclone_checkers"}}" class="input input-bordered">
-            </label>
-          </div>
-        </div>
-
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <label class="form-control">
-            <div class="label"><span class="label-text">buffer-size</span></div>
-            <input type="text" name="rclone_buffer_size" value="{{index .S "rclone_buffer_size"}}" class="input input-bordered" placeholder="例如 64M">
-          </label>
-          <label class="form-control">
-            <div class="label"><span class="label-text">chunk-size</span></div>
-            <input type="text" name="rclone_drive_chunk_size" value="{{index .S "rclone_drive_chunk_size"}}" class="input input-bordered" placeholder="例如 64M">
-          </label>
-        </div>
-
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <label class="form-control">
-            <div class="label"><span class="label-text">采样间隔（ms）</span></div>
-            <input type="number" name="metrics_interval_ms" value="{{index .S "metrics_interval_ms"}}" class="input input-bordered">
-            <div class="label"><span class="label-text-alt opacity-70">轮询 rclone RC 统计的间隔（毫秒）。</span></div>
-          </label>
-          <label class="form-control">
-            <div class="label"><span class="label-text">调度 tick（ms）</span></div>
-            <input type="number" name="scheduler_tick_ms" value="{{index .S "scheduler_tick_ms"}}" class="input input-bordered">
-            <div class="label"><span class="label-text-alt opacity-70">调度器检查队列并启动任务的周期（毫秒）。</span></div>
-          </label>
-        </div>
-
-        <div class="flex flex-wrap gap-2">
-          <label class="form-control w-full"><div class="label"><span class="label-text">单次扫描超时（秒）</span></div><input class="input input-bordered" type="number" min="1" max="86400" name="scan_timeout_sec" value="{{index .S "scan_timeout_sec"}}" placeholder="默认 600"><div class="label"><span class="label-text-alt opacity-70">源扫描、元数据读取超时后会明确失败，调度继续处理其他任务。</span></div></label>
-          <label class="form-control w-full"><div class="label"><span class="label-text">允许的回调接收端（可选）</span></div><input class="input input-bordered" name="callback_allowed_hosts" value="{{index .S "callback_allowed_hosts"}}" placeholder="例如 workflow.example.com, 192.168.1.10:8080"><div class="label"><span class="label-text-alt opacity-70">配置后仅向列出的主机发送回调；留空保持现有接收端兼容。</span></div></label>
-          <button class="btn btn-info text-info-content" type="submit">保存</button>
-          <button class="btn btn-ghost" type="button" id="btnCheck">检测 rclone</button>
-        </div>
-      </form>
-
-      <div class="text-sm opacity-70 mt-3">日志目录：{{.LogDir}}</div>
-    </div>
-  </div>
+<div class="app-form">
+  <div class="page-heading"><div><h1>系统设置</h1><p class="page-description">配置连接、全局传输参数与管理台访问</p></div><button class="btn btn-sm" type="button" id="btnCheck">{{icon "shield"}}检测 rclone</button></div>
+  <form method="post" action="/settings/save" data-ui-form data-edit-form data-draft-form>
+    <div class="app-tabs" role="tablist" aria-label="系统设置"><button class="app-tab active" data-form-tab="basic" type="button" role="tab" aria-selected="true" aria-controls="settingsBasic">连接与常规</button><button class="app-tab" data-form-tab="transfer" type="button" role="tab" aria-selected="false" aria-controls="settingsTransfer">传输参数</button><button class="app-tab" data-form-tab="advanced" type="button" role="tab" aria-selected="false" aria-controls="settingsAdvanced">调度与高级</button><button class="app-tab" data-form-tab="account" type="button" role="tab" aria-selected="false" aria-controls="settingsAccount">管理台访问</button></div>
+    <section class="app-form-panel" id="settingsBasic" data-form-panel="basic" role="tabpanel"><div class="app-form-grid">
+      <label class="app-field app-field-wide">rclone 配置路径<input name="rclone_config_path" value="{{index .S "rclone_config_path"}}" class="input" placeholder="留空使用 rclone 默认配置"><span class="app-field-help app-wrap">当前路径：{{.RcloneConfigPathDisplay}}</span></label>
+      <label class="app-field">系统总并发<input name="global_max_jobs" value="{{index .S "global_max_jobs"}}" type="number" min="0" max="10000" class="input" placeholder="0 表示不限"><span class="app-field-help">所有规则及手动、API 任务共用</span></label>
+      <label class="app-field">日志保留天数<input name="log_retention_days" value="{{index .S "log_retention_days"}}" type="number" min="0" max="3650" class="input"><span class="app-field-help">0 不自动清理；运行中的任务会保留</span></label>
+      <label class="app-field app-field-wide">默认传输速度上限<input name="rclone_bwlimit" value="{{index .S "rclone_bwlimit"}}" class="input" placeholder="例如 40M，留空不限"><span class="app-field-help">规则可以单独覆盖此设置</span></label>
+    </div><p class="app-field-help mt-6 app-wrap">日志目录：{{.LogDir}}</p></section>
+    <section class="app-form-panel" id="settingsTransfer" data-form-panel="transfer" role="tabpanel" hidden><div class="app-form-grid">
+      <label class="app-field">每个任务同时传输文件数<input name="rclone_transfers" value="{{index .S "rclone_transfers"}}" type="number" min="1" max="1000" class="input"><span class="app-field-help">rclone transfers</span></label>
+      <label class="app-field">每个任务同时检查文件数<input name="rclone_checkers" value="{{index .S "rclone_checkers"}}" type="number" min="1" max="1000" class="input"><span class="app-field-help">rclone checkers</span></label>
+      <label class="app-field">文件缓冲大小<input name="rclone_buffer_size" value="{{index .S "rclone_buffer_size"}}" class="input" placeholder="例如 64M"><span class="app-field-help">rclone buffer-size</span></label>
+      <label class="app-field">Google Drive 上传分块大小<input name="rclone_drive_chunk_size" value="{{index .S "rclone_drive_chunk_size"}}" class="input" placeholder="例如 64M"><span class="app-field-help">rclone drive-chunk-size</span></label>
+    </div></section>
+    <section class="app-form-panel" id="settingsAdvanced" data-form-panel="advanced" role="tabpanel" hidden><div class="app-form-grid">
+      <label class="app-field">RC 起始端口<input name="rc_port_start" value="{{index .S "rc_port_start"}}" type="number" min="1" max="65535" class="input"></label>
+      <label class="app-field">RC 结束端口<input name="rc_port_end" value="{{index .S "rc_port_end"}}" type="number" min="1" max="65535" class="input"><span class="app-field-help">任务在端口范围内独立统计</span></label>
+      <label class="app-field">统计采样间隔<input name="metrics_interval_ms" value="{{index .S "metrics_interval_ms"}}" type="number" min="100" max="3600000" class="input"><span class="app-field-help">毫秒</span></label>
+      <label class="app-field">调度检查间隔<input name="scheduler_tick_ms" value="{{index .S "scheduler_tick_ms"}}" type="number" min="100" max="3600000" class="input"><span class="app-field-help">毫秒</span></label>
+      <label class="app-field">单次扫描超时<input name="scan_timeout_sec" value="{{index .S "scan_timeout_sec"}}" type="number" min="1" max="86400" class="input" placeholder="默认 600"><span class="app-field-help">秒</span></label>
+      <label class="app-field app-field-wide">允许的回调接收端<input name="callback_allowed_hosts" value="{{index .S "callback_allowed_hosts"}}" class="input" placeholder="workflow.example.com, 192.168.1.10:8080"><span class="app-field-help">可选；多个接收端用逗号分隔</span></label>
+    </div></section>
+    <section class="app-form-panel" id="settingsAccount" data-form-panel="account" role="tabpanel" hidden><div class="app-form-grid">
+      <label class="app-field">管理台新密码<input name="ui_password" type="password" class="input" autocomplete="new-password" placeholder="留空保持当前密码"><span class="app-field-help">修改后需要重新登录</span></label>
+      <label class="app-field">确认新密码<input name="ui_password2" type="password" class="input" autocomplete="new-password" placeholder="再次输入新密码"></label>
+    </div></section>
+    <div class="alert alert-error app-form-feedback" data-form-feedback hidden role="alert"></div>
+    <footer class="app-savebar"><span data-draft-state>设置将在保存后生效</span><div class="page-actions"><button type="button" class="btn btn-sm btn-ghost" data-form-reset>重置更改</button><button type="submit" class="btn btn-sm btn-primary">{{icon "check"}}保存设置</button></div></footer>
+  </form>
 </div>
-
-<dialog id="rcloneModal" class="modal">
-  <div class="modal-box max-w-3xl">
-    <h3 class="font-bold text-lg mb-2">rclone 检测</h3>
-    <div id="rcloneModalBody" class="text-sm opacity-80 whitespace-pre-wrap"></div>
-    <div class="modal-action">
-      <form method="dialog">
-        <button class="btn">关闭</button>
-      </form>
-    </div>
-  </div>
-  <form method="dialog" class="modal-backdrop"><button>close</button></form>
-</dialog>
-
+<dialog id="rcloneModal" class="modal" aria-labelledby="rcloneModalTitle"><div class="modal-box max-w-3xl"><h3 id="rcloneModalTitle" class="font-semibold text-lg">rclone 检测</h3><div id="rcloneModalBody" class="app-mono app-wrap whitespace-pre-wrap mt-4"></div><div class="modal-action"><form method="dialog"><button class="btn" type="submit">关闭</button></form></div></div></dialog>
 <script>
-  const btn = document.getElementById('btnCheck');
-  const dlg = document.getElementById('rcloneModal');
-  const body = document.getElementById('rcloneModalBody');
-  btn?.addEventListener('click', async () => {
-    body.textContent = '检测中...';
-    dlg?.showModal();
-    try {
-      const r = await fetch('/api/rclone/check');
-      const d = await r.json();
-      if (!d.installed) {
-        body.textContent = (d.hint || '未检测到 rclone') + '\n\n请自行安装后重启终端/服务。';
-        return;
-      }
-      const remotes = (d.remotes || []).slice(0, 50);
-      body.textContent =
-        'PATH: ' + (d.path || '') + '\n' +
-        '版本: ' + (d.version || d.versionError || '') + '\n' +
-        '配置: ' + (d.configPathDisplay || '') + '\n\n' +
-        'Remotes（最多50个）:\n' +
-        (remotes.length ? remotes.join('\n') : (d.remotesError || ''));
-    } catch (e) {
-      body.textContent = '检测失败：' + e;
-    }
-  });
+document.getElementById('btnCheck').addEventListener('click',async()=>{
+  const dialog=document.getElementById('rcloneModal'),body=document.getElementById('rcloneModalBody');
+  body.textContent='检测中…';dialog.showModal();
+  try{const response=await fetch('/api/rclone/check');if(!response.ok)throw new Error('检测请求失败');const data=await response.json();
+    body.textContent=data.installed?'版本：'+(data.version||data.versionError||'—')+'\n配置：'+(data.configPathDisplay||'—')+'\n可用连接：\n'+((data.remotes||[]).join('\n')||data.remotesError||'暂无连接'):(data.hint||'未检测到 rclone');
+  }catch(error){body.textContent=error.message;}
+});
 </script>
 {{end}}

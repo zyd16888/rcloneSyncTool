@@ -1,10 +1,10 @@
 {{define "content"}}
-<div class="space-y-4">
-  <div>
-    <h1 class="text-xl font-bold">API 访问</h1>
-    <div class="text-sm opacity-70">
-      供外部工作流调用 <code>/api/v1</code> 的凭据。Token 只保存哈希，回调密钥只保存原值供签名使用；两者都只在创建时显示一次。
-    </div>
+<div class="space-y-5">
+  <div class="page-heading">
+    <div><h1>API 访问</h1>
+    <p class="page-description">
+      管理外部系统调用与回调签名。新凭据只在创建时显示一次。
+    </p></div>
   </div>
 
   {{if .Error}}
@@ -16,14 +16,14 @@
   {{if .NewToken}}
   <div class="alert alert-success flex-col items-start gap-2">
     <div class="font-bold">Token「{{.NewTokenName}}」已创建，请立即保存，它不会再次显示。</div>
-    <code class="font-mono text-sm break-all select-all bg-base-100 px-3 py-2 rounded w-full">{{.NewToken}}</code>
+    <code class="app-secret w-full select-all">{{.NewToken}}</code><button class="btn btn-sm" type="button" data-copy="{{.NewToken}}" data-copy-label="Token">{{icon "copy"}}复制 Token</button>
   </div>
   {{end}}
 
   {{if .NewCallbackSecret}}
   <div class="alert alert-success flex-col items-start gap-2">
     <div class="font-bold">回调签名密钥已生成，请填入接收端的「回调签名密钥」，它不会再次显示。</div>
-    <code class="font-mono text-sm break-all select-all bg-base-100 px-3 py-2 rounded w-full">{{.NewCallbackSecret}}</code>
+    <code class="app-secret w-full select-all">{{.NewCallbackSecret}}</code><button class="btn btn-sm" type="button" data-copy="{{.NewCallbackSecret}}" data-copy-label="回调密钥">{{icon "copy"}}复制密钥</button>
   </div>
   {{end}}
 
@@ -44,8 +44,7 @@
     </div>
   </div>
 
-  <div class="card bg-base-100 border border-base-200">
-    <div class="card-body p-0">
+  <div class="app-table-wrap">
       <table class="table">
         <thead>
           <tr>
@@ -63,11 +62,11 @@
             <td class="font-bold">{{.Name}}</td>
             <td>
               {{if .Active}}
-              <span class="badge badge-success badge-outline">可用</span>
+              <span class="status status-done">可用</span>
               {{else if .Expired}}
-              <span class="badge badge-warning badge-outline">已过期</span>
+              <span class="status status-blocked">已过期</span>
               {{else}}
-              <span class="badge badge-ghost">已停用</span>
+              <span class="status status-paused">已停用</span>
               {{end}}
             </td>
             <td class="font-mono text-xs opacity-70">{{.CreatedText}}</td>
@@ -79,7 +78,7 @@
                 <input type="hidden" name="enabled" value="{{if .Enabled}}0{{else}}1{{end}}">
                 <button class="btn btn-xs btn-outline">{{if .Enabled}}停用{{else}}启用{{end}}</button>
               </form>
-              <form method="post" action="/api-access/tokens/delete" onsubmit="return confirm('删除后使用该 Token 的集成会立即失效，确定删除？');">
+              <form method="post" action="/api-access/tokens/delete" data-confirm-title="删除 Token？" data-confirm-message="使用这个 Token 的集成会立即失效。" data-confirm-label="删除 Token">
                 <input type="hidden" name="id" value="{{.ID}}">
                 <button class="btn btn-xs btn-error btn-outline">删除</button>
               </form>
@@ -92,7 +91,6 @@
           {{end}}
         </tbody>
       </table>
-    </div>
   </div>
 
   <div class="card bg-base-100 border border-base-200">
@@ -103,15 +101,15 @@
       </div>
       <div class="flex flex-wrap items-center gap-3 pt-2">
         {{if .CallbackConfigured}}
-        <span class="badge badge-success badge-outline">已配置（{{.CallbackLength}} 字符）</span>
+        <span class="status status-done">已配置（{{.CallbackLength}} 字符）</span>
         {{else}}
-        <span class="badge badge-ghost">未配置，回调已停用</span>
+        <span class="status status-paused">未配置，回调已停用</span>
         {{end}}
-        <form method="post" action="/api-access/callback-secret/rotate" onsubmit="return confirm('轮转后旧密钥立即失效，请确保接收端能填入新值。确定继续？');">
+        <form method="post" action="/api-access/callback-secret/rotate" data-confirm-title="轮转回调签名密钥？" data-confirm-message="旧密钥会立即失效，接收端需要更新为新密钥。" data-confirm-label="轮转密钥">
           <button class="btn btn-sm btn-primary">{{if .CallbackConfigured}}轮转{{else}}生成{{end}}</button>
         </form>
         {{if .CallbackConfigured}}
-        <form method="post" action="/api-access/callback-secret/clear" onsubmit="return confirm('清除后将不再发送回调，接收端只能依赖轮询。确定清除？');">
+        <form method="post" action="/api-access/callback-secret/clear" data-confirm-title="清除回调签名密钥？" data-confirm-message="清除后暂停发送回调，接收端需要通过轮询查询结果。" data-confirm-label="清除密钥">
           <button class="btn btn-sm btn-ghost">清除</button>
         </form>
         {{end}}

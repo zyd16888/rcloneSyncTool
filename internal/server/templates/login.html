@@ -1,39 +1,10 @@
 {{define "content"}}
-<div class="max-w-md mx-auto">
-  <div class="card bg-base-100 border border-base-200">
-    <div class="card-body space-y-3">
-      <div>
-        <h1 class="text-xl font-bold">{{if .HasPassword}}登录{{else}}初始化密码{{end}}</h1>
-        <div class="text-sm opacity-70">{{if .HasPassword}}请输入管理台密码。{{else}}首次使用请设置管理台密码。{{end}}</div>
-      </div>
-
-      {{if .Error}}
-      <div class="alert alert-error">
-        <span>{{.Error}}</span>
-      </div>
-      {{end}}
-
-      <form method="post" action="/login" class="space-y-3">
-        <input type="hidden" name="next" value="{{.Next}}">
-
-        <label class="form-control">
-          <div class="label"><span class="label-text">密码</span></div>
-          <input type="password" name="password" autocomplete="current-password" class="input input-bordered" placeholder="{{if .HasPassword}}请输入密码{{else}}设置新密码{{end}}">
-        </label>
-
-        {{if not .HasPassword}}
-        <label class="form-control">
-          <div class="label"><span class="label-text">确认密码</span></div>
-          <input type="password" name="password2" autocomplete="new-password" class="input input-bordered" placeholder="再次输入新密码">
-        </label>
-        {{end}}
-
-        <div class="flex gap-2">
-          <button class="btn btn-info text-info-content" type="submit">{{if .HasPassword}}登录{{else}}保存并登录{{end}}</button>
-        </div>
-      </form>
-    </div>
-  </div>
-</div>
+<div class="app-login"><div class="app-login-panel">
+  <div class="app-login-brand"><span class="app-brand-mark">{{icon "sync"}}</span>rclone Sync</div>
+  <h1 class="text-xl font-semibold">{{if .HasPassword}}登录同步工作台{{else}}设置管理台密码{{end}}</h1><p class="page-description mb-6">{{if .HasPassword}}使用管理台密码查看和管理同步任务{{else}}首次使用，设置密码后进入同步工作台{{end}}</p>
+  {{if .Error}}<div class="alert alert-error mb-5" role="alert">{{.Error}}</div>{{end}}
+  <form method="post" action="/login"><input name="next" value="{{.Next}}" type="hidden"><label class="app-field">密码<input name="password" type="password" class="input" autocomplete="{{if .HasPassword}}current-password{{else}}new-password{{end}}" required placeholder="{{if .HasPassword}}请输入密码{{else}}设置新密码{{end}}"></label>
+  {{if not .HasPassword}}<label class="app-field mt-4">确认密码<input name="password2" type="password" class="input" autocomplete="new-password" required placeholder="再次输入新密码"></label>{{end}}
+  <button class="btn btn-primary w-full mt-6" type="submit">{{if .HasPassword}}登录{{else}}保存并进入{{end}} {{icon "arrow-right"}}</button></form>
+</div></div>
 {{end}}
-

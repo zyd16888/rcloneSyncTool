@@ -1,7 +1,6 @@
 function createLineChart(canvas, opts) {
   const options = opts || {};
   const padding = options.padding || 36;
-  const color = options.color || "#16baaa";
 
   function theme() {
     const t = (document.documentElement.getAttribute("data-theme") || "").toLowerCase();
@@ -26,9 +25,12 @@ function createLineChart(canvas, opts) {
   const ctx = canvas.getContext("2d");
 
   function draw(points, formatter) {
+    const ratio=window.devicePixelRatio||1;
+    ctx.setTransform(ratio,0,0,ratio,0,0);
+    const color=getComputedStyle(document.documentElement).getPropertyValue('--app-primary').trim()||options.color||"#3863df";
     const colors = resolveColors();
-    const w = canvas.width;
-    const h = canvas.height;
+    const w = canvas.width/ratio;
+    const h = canvas.height/ratio;
     ctx.clearRect(0, 0, w, h);
 
     ctx.fillStyle = colors.bg;
@@ -47,6 +49,7 @@ function createLineChart(canvas, opts) {
       if (p.y > maxY) maxY = p.y;
     }
     if (!isFinite(minY) || !isFinite(maxY)) return;
+    if (options.zeroBaseline) { minY = 0; maxY = Math.max(1, maxY * 1.1); }
     if (minY === maxY) { maxY = minY + 1; }
 
     const minX = points[0].x;

@@ -86,12 +86,12 @@ func (s *Server) rcloneConfigGet(c *gin.Context) {
 	}
 
 	s.render(c, "rclone_config", map[string]any{
-		"Active":      "rclone_config",
-		"Path":        p,
-		"PathSource":  source,
-		"Content":     content,
-		"ReadError":   readErr,
-		"HasContent":  content != "",
+		"Active":       "rclone_config",
+		"Path":         p,
+		"PathSource":   source,
+		"Content":      content,
+		"ReadError":    readErr,
+		"HasContent":   content != "",
 		"HasReadError": readErr != "",
 	})
 }
@@ -142,5 +142,5 @@ func (s *Server) rcloneConfigSavePost(c *gin.Context) {
 		return
 	}
 
-	s.redirect(c, "/rclone/config")
+	s.uiSuccess(c, "rclone 配置已保存", "/rclone/config")
 }

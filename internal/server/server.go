@@ -63,18 +63,21 @@ func New(st *store.Store, supervisor *daemon.Supervisor, logDir string, appLogPa
 		"humanBytes": humanBytes,
 		"humanSpeed": humanSpeed,
 	}
+	for name, fn := range uiTemplateFuncs() {
+		funcs[name] = fn
+	}
 	s.pages = map[string]*template.Template{}
 	files, err := fs.Glob(content, "templates/*.html")
 	if err != nil {
 		panic(err)
 	}
 	for _, f := range files {
-		if strings.HasSuffix(f, "/layout.html") || strings.HasSuffix(f, "layout.html") {
+		if strings.HasSuffix(f, "/layout.html") || strings.HasPrefix(path.Base(f), "_") {
 			continue
 		}
 		name := strings.TrimSuffix(path.Base(f), ".html")
 		t := template.New("layout").Funcs(funcs)
-		t = template.Must(t.ParseFS(content, "templates/layout.html", f))
+		t = template.Must(t.ParseFS(content, "templates/layout.html", "templates/_*.html", f))
 		s.pages[name] = t
 	}
 
@@ -169,6 +172,10 @@ func New(st *store.Store, supervisor *daemon.Supervisor, logDir string, appLogPa
 func (s *Server) render(c *gin.Context, name string, data any) {
 	c.Writer.Header().Set("Content-Type", "text/html; charset=utf-8")
 	if m, ok := data.(map[string]any); ok {
+		m["IsLogin"] = name == "login"
+		if _, exists := m["PageTitle"]; !exists {
+			m["PageTitle"] = pageTitles[name]
+		}
 		s.injectBase(c, m)
 	}
 	t, ok := s.pages[name]
@@ -184,124 +191,6 @@ func (s *Server) render(c *gin.Context, name string, data any) {
 
 func (s *Server) redirect(c *gin.Context, p string) {
 	c.Redirect(http.StatusSeeOther, p)
-}
-
-func (s *Server) dashboard(c *gin.Context) {
-	ctx := c.Request.Context()
-	rules, _ := s.st.ListRules(ctx)
-	// Pre-calculate group stats to avoid N+1
-	groupUsage := map[string]int64{}
-	groupLimit := map[string]int64{}
-
-	lgs, _ := s.st.ListLimitGroups(ctx)
-	for _, lg := range lgs {
-		groupLimit[lg.Name] = lg.DailyLimitBytes
-		u, _ := s.st.GroupUsageSince(ctx, lg.Name, time.Now().Add(-24*time.Hour))
-		groupUsage[lg.Name] = u
-	}
-
-	type ruleRow struct {
-		Rule       store.Rule
-		Counts     store.FileStateCounts
-		Usage24h   int64
-		GroupLimit int64
-	}
-	var rows []ruleRow
-	for _, rule := range rules {
-		counts, _ := s.st.RuleFileCounts(ctx, rule.ID)
-		var usage int64
-		var limit int64
-		if rule.LimitGroup != "" {
-			usage = groupUsage[rule.LimitGroup]
-			limit = groupLimit[rule.LimitGroup]
-		} else {
-			usage, _ = s.st.RuleUsageSince(ctx, rule.ID, time.Now().Add(-24*time.Hour))
-			limit = rule.DailyLimitBytes
-		}
-		rows = append(rows, ruleRow{Rule: rule, Counts: counts, Usage24h: usage, GroupLimit: limit})
-	}
-	var enabledRows []ruleRow
-	for _, row := range rows {
-		if row.Rule.Enabled {
-			enabledRows = append(enabledRows, row)
-		}
-	}
-	jobsPage := atoiDefault(c.Query("jobs_page"), 1)
-	jobsPageSize := normalizePageSize(c.Query("jobs_page_size"), 10)
-	if jobsPage <= 0 {
-		jobsPage = 1
-	}
-	totalJobs, _ := s.st.CountJobs(ctx)
-	totalPages := (totalJobs + jobsPageSize - 1) / jobsPageSize
-	if totalPages <= 0 {
-		totalPages = 1
-	}
-	if jobsPage > totalPages {
-		jobsPage = totalPages
-	}
-	offset := (jobsPage - 1) * jobsPageSize
-	jobs, _ := s.st.ListJobsPage(ctx, jobsPageSize, offset)
-	type jobRow struct {
-		Job    store.Job
-		Metric store.JobMetric
-		HasM   bool
-	}
-	var jobRows []jobRow
-	for _, j := range jobs {
-		m, ok, _ := s.st.LatestJobMetric(ctx, j.JobID)
-		jobRows = append(jobRows, jobRow{Job: j, Metric: m, HasM: ok})
-	}
-	totalBytes, _ := s.st.TotalBytesDone(ctx)
-	totalSpeed, _ := s.st.TotalSpeedRunning(ctx)
-	runningJobs, _ := s.st.CountRunningJobsAll(ctx)
-
-	now := time.Now()
-	todayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
-	bytesToday, _ := s.st.StatsBytesSince(ctx, todayStart)
-	bytes24h, _ := s.st.StatsBytesSince(ctx, now.Add(-24*time.Hour))
-
-	// Limit Groups Summary
-	type groupStat struct {
-		Name  string
-		Usage int64
-		Limit int64
-	}
-	var groupStats []groupStat
-	lgs, _ = s.st.ListLimitGroups(ctx)
-	for _, lg := range lgs {
-		usage, _ := s.st.GroupUsageSince(ctx, lg.Name, now.Add(-24*time.Hour))
-		groupStats = append(groupStats, groupStat{
-			Name:  lg.Name,
-			Usage: usage,
-			Limit: lg.DailyLimitBytes,
-		})
-	}
-
-	settings, _ := s.st.RuntimeSettings(ctx)
-	hasPrev := jobsPage > 1
-	hasNext := jobsPage < totalPages
-	s.render(c, "dashboard", map[string]any{
-		"Active":         "dashboard",
-		"Rules":          rows,
-		"EnabledRules":   enabledRows,
-		"Jobs":           jobRows,
-		"LogDir":         s.logDir,
-		"TotalBytes":     totalBytes,
-		"TotalSpeed":     totalSpeed,
-		"RunningJobs":    runningJobs,
-		"BytesToday":     bytesToday,
-		"Bytes24h":       bytes24h,
-		"LimitGroups":    groupStats,
-		"RcloneConfig":   settings.RcloneConfigPath,
-		"JobsPage":       jobsPage,
-		"JobsPageSize":   jobsPageSize,
-		"JobsTotal":      totalJobs,
-		"JobsTotalPages": totalPages,
-		"JobsHasPrev":    hasPrev,
-		"JobsHasNext":    hasNext,
-		"JobsPrevURL":    fmt.Sprintf("/?jobs_page=%d&jobs_page_size=%d", maxInt(1, jobsPage-1), jobsPageSize),
-		"JobsNextURL":    fmt.Sprintf("/?jobs_page=%d&jobs_page_size=%d", minInt(totalPages, jobsPage+1), jobsPageSize),
-	})
 }
 
 func (s *Server) remotesList(c *gin.Context) {
@@ -328,7 +217,7 @@ func (s *Server) limitGroupsList(c *gin.Context) {
 	}
 
 	s.render(c, "limit_groups", map[string]any{
-		"Active":        "rules",
+		"Active":        "limit_groups",
 		"Groups":        groups,
 		"Rules":         rules,
 		"GroupRulesMap": groupRulesMap,
@@ -356,23 +245,27 @@ func (s *Server) limitGroupsSavePost(c *gin.Context) {
 	ruleIDs := c.PostFormArray("rule_ids")
 	if err := s.st.SetRulesForLimitGroup(ctx, name, ruleIDs); err != nil {
 		log.Printf("failed to update rules for group %s: %v", name, err)
-		// continue, don't fail the whole request
+		uiError(c, http.StatusConflict, "", "分组限额已保存，但关联规则未能更新，请刷新检查")
+		return
 	}
 
-	s.redirect(c, "/limit_groups")
+	s.uiSuccess(c, "限流分组已保存", "/limit_groups")
 }
 
 func (s *Server) limitGroupsDeletePost(c *gin.Context) {
 	ctx := c.Request.Context()
-	_ = s.st.DeleteLimitGroup(ctx, c.PostForm("name"))
-	s.redirect(c, "/limit_groups")
+	if err := s.st.DeleteLimitGroup(ctx, c.PostForm("name")); err != nil {
+		uiError(c, 400, "", "删除分组失败")
+		return
+	}
+	s.uiSuccess(c, "分组已删除，关联规则恢复独立限额", "/limit_groups")
 }
 
 func (s *Server) extensionPresetsList(c *gin.Context) {
 	ctx := c.Request.Context()
 	presets, _ := s.st.ListExtensionPresets(ctx)
 	s.render(c, "extension_presets", map[string]any{
-		"Active":  "rules",
+		"Active":  "extension_presets",
 		"Presets": presets,
 	})
 }
@@ -393,13 +286,16 @@ func (s *Server) extensionPresetsSavePost(c *gin.Context) {
 		c.String(http.StatusBadRequest, err.Error())
 		return
 	}
-	s.redirect(c, "/extension_presets")
+	s.uiSuccess(c, "扩展名预设已保存", "/extension_presets")
 }
 
 func (s *Server) extensionPresetsDeletePost(c *gin.Context) {
 	ctx := c.Request.Context()
-	_ = s.st.DeleteExtensionPreset(ctx, c.PostForm("name"))
-	s.redirect(c, "/extension_presets")
+	if err := s.st.DeleteExtensionPreset(ctx, c.PostForm("name")); err != nil {
+		uiError(c, 400, "", "删除预设失败")
+		return
+	}
+	s.uiSuccess(c, "扩展名预设已删除", "/extension_presets")
 }
 
 func (s *Server) manualGet(c *gin.Context) {
@@ -422,28 +318,46 @@ func (s *Server) manualGet(c *gin.Context) {
 	remotes, err := s.listRcloneRemotes(ctx)
 	rules, _ := s.st.ListRules(ctx)
 	presets, _ := s.st.ListExtensionPresets(ctx)
+	limitGroups, _ := s.st.ListLimitGroups(ctx)
 	s.render(c, "manual", map[string]any{
-		"Active":  "rules",
-		"Remotes": remotes,
-		"Rule":    rule,
-		"Rules":   rules,
-		"Presets": presets,
-		"Error":   errString(err),
+		"Active":      "manual",
+		"Manual":      true,
+		"LimitGroups": limitGroups,
+		"Remotes":     remotes,
+		"Rule":        rule,
+		"Rules":       rules,
+		"Presets":     presets,
+		"Error":       errString(err),
 	})
 }
 
 func (s *Server) manualStartPost(c *gin.Context) {
 	ctx := c.Request.Context()
+	dailyLimit, err := parseSizeBytes(c.PostForm("daily_limit"))
+	if err != nil {
+		uiError(c, http.StatusBadRequest, "daily_limit", "流量限制格式错误")
+		return
+	}
+	sourceSubpath, err := normalizeSubpath(c.PostForm("source_subpath"))
+	if err != nil {
+		uiError(c, http.StatusBadRequest, "source_subpath", "源子目录必须位于源根目录内")
+		return
+	}
+	destinationSubpath, err := normalizeSubpath(c.PostForm("destination_subpath"))
+	if err != nil {
+		uiError(c, http.StatusBadRequest, "destination_subpath", "目标子目录必须位于目标根目录内")
+		return
+	}
 
 	minSize, err := parseSizeBytes(c.PostForm("min_file_size"))
 	if err != nil {
-		c.String(http.StatusBadRequest, "最小文件大小格式错误：%v（示例：10M / 1.5G / 0 / 留空）", err)
+		uiError(c, http.StatusBadRequest, "min_file_size", "最小文件大小格式错误，请使用 10M、1.5G、0 或留空")
 		return
 	}
 
 	if strings.TrimSpace(c.PostForm("rclone_extra_args")) != "" {
 		if err := daemon.ValidateRcloneArgs(c.PostForm("rclone_extra_args")); err != nil {
-			c.String(http.StatusBadRequest, err.Error())
+			uiError(c, http.StatusBadRequest, "rclone_extra_args", err.Error())
 			return
 		}
 	}
@@ -452,6 +366,11 @@ func (s *Server) manualStartPost(c *gin.Context) {
 	ruleID := "manual_" + jobID
 	rule := store.Rule{
 		ID:               ruleID,
+		LimitGroup:       c.PostForm("limit_group"),
+		DailyLimitBytes:  dailyLimit,
+		GroupByDirectory: store.ParseEnabled(c.PostForm("group_by_directory")),
+		AtomicPublish:    store.ParseEnabled(c.PostForm("atomic_publish")),
+		StagingPath:      c.PostForm("staging_path"),
 		SrcKind:          c.PostForm("src_kind"),
 		SrcRemote:        c.PostForm("src_remote"),
 		SrcPath:          c.PostForm("src_path"),
@@ -490,7 +409,7 @@ func (s *Server) manualStartPost(c *gin.Context) {
 		c.String(http.StatusInternalServerError, "load rule: %v", err)
 		return
 	}
-	request, err := daemon.EncodeTransferSpec(daemon.TransferSpec{Operation: frozen.TransferMode, RuleSnapshot: &frozen})
+	request, err := daemon.EncodeTransferSpec(daemon.TransferSpec{Operation: frozen.TransferMode, RuleSnapshot: &frozen, SourceSubpath: sourceSubpath, DestinationSubpath: destinationSubpath})
 	if err != nil {
 		c.String(http.StatusInternalServerError, "encode task: %v", err)
 		return
@@ -500,62 +419,7 @@ func (s *Server) manualStartPost(c *gin.Context) {
 		c.String(http.StatusInternalServerError, "create task: %v", err)
 		return
 	}
-	s.redirect(c, "/jobs/view?id="+jobID)
-}
-
-func (s *Server) jobsList(c *gin.Context) {
-	ctx := c.Request.Context()
-	page := atoiDefault(c.Query("page"), 1)
-	pageSize := normalizePageSize(c.Query("page_size"), 20)
-	if page <= 0 {
-		page = 1
-	}
-	filter := store.JobFilter{
-		RuleID:       strings.TrimSpace(c.Query("rule_id")),
-		Status:       normalizeJobStatus(c.Query("status")),
-		TransferMode: normalizeTransferMode(c.Query("mode")),
-		Query:        strings.TrimSpace(c.Query("q")),
-	}
-	total, _ := s.st.CountJobsFiltered(ctx, filter)
-	totalPages := (total + pageSize - 1) / pageSize
-	if totalPages <= 0 {
-		totalPages = 1
-	}
-	if page > totalPages {
-		page = totalPages
-	}
-	offset := (page - 1) * pageSize
-	jobs, _ := s.st.ListJobsPageFiltered(ctx, pageSize, offset, filter)
-	type row struct {
-		Job    store.Job
-		Metric store.JobMetric
-		HasM   bool
-	}
-	var rows []row
-	for _, j := range jobs {
-		m, ok, _ := s.st.LatestJobMetric(ctx, j.JobID)
-		rows = append(rows, row{Job: j, Metric: m, HasM: ok})
-	}
-	hasPrev := page > 1
-	hasNext := page < totalPages
-	rules, _ := s.st.ListRules(ctx)
-	prevURL := s.jobsListURL(page-1, pageSize, filter)
-	nextURL := s.jobsListURL(page+1, pageSize, filter)
-	s.render(c, "jobs", map[string]any{
-		"Active":     "jobs",
-		"Jobs":       rows,
-		"Rules":      rules,
-		"F":          filter,
-		"SelfURL":    c.Request.URL.RequestURI(),
-		"Page":       page,
-		"PageSize":   pageSize,
-		"Total":      total,
-		"TotalPages": totalPages,
-		"HasPrev":    hasPrev,
-		"HasNext":    hasNext,
-		"PrevURL":    prevURL,
-		"NextURL":    nextURL,
-	})
+	s.uiSuccess(c, "任务已排队，正在准备本次文件清单", "/jobs/view?id="+jobID)
 }
 
 func normalizePageSize(s string, def int) int {
@@ -622,67 +486,11 @@ func maxInt(a, b int) int {
 	return b
 }
 
-func (s *Server) jobView(c *gin.Context) {
-	ctx := c.Request.Context()
-	id := strings.TrimSpace(c.Query("id"))
-	job, ok, _ := s.st.GetJob(ctx, id)
-	if !ok {
-		c.Status(http.StatusNotFound)
-		return
-	}
-	rule, _, _ := s.st.GetRule(ctx, job.RuleID)
-	if transfer, found, e := s.st.GetTransferJob(ctx, id); e == nil && found && transfer.RequestJSON != "" {
-		if spec, e := daemon.DecodeStoredTransferSpec(transfer.RequestJSON); e == nil && spec.RuleSnapshot != nil {
-			rule = *spec.RuleSnapshot
-			if rule.SrcKind == "local" {
-				rule.SrcLocalRoot = filepath.Join(rule.SrcLocalRoot, filepath.FromSlash(spec.SourceSubpath))
-			} else if spec.SourceSubpath != "" {
-				rule.SrcPath = strings.TrimSuffix(rule.SrcPath, "/") + "/" + spec.SourceSubpath
-			}
-			if spec.DestinationSubpath != "" {
-				rule.DstPath = strings.TrimSuffix(rule.DstPath, "/") + "/" + spec.DestinationSubpath
-			}
-		}
-	}
-	s.render(c, "job_view", map[string]any{
-		"Active": "jobs",
-		"Job":    job,
-		"Rule":   rule,
-	})
-}
-
-func (s *Server) apiJob(c *gin.Context) {
-	ctx := c.Request.Context()
-	id := strings.TrimSpace(c.Query("id"))
-	job, ok, err := s.st.GetJob(ctx, id)
-	if err != nil || !ok {
-		c.Status(http.StatusNotFound)
-		return
-	}
-	metric, hasM, _ := s.st.LatestJobMetric(ctx, job.JobID)
-	counts, countErr := s.st.TransferJobFileCounts(ctx, job.JobID)
-	doneCount := counts.Done
-	doneErr := errString(countErr)
-	if counts.Total == 0 {
-		doneCount, doneErr = s.jobDoneCount(job.JobID, job.LogPath)
-	}
-	c.Writer.Header().Set("Content-Type", "application/json; charset=utf-8")
-	_ = json.NewEncoder(c.Writer).Encode(map[string]any{
-		"job":         job,
-		"metric":      metric,
-		"hasMetric":   hasM,
-		"doneCount":   doneCount,
-		"doneError":   doneErr,
-		"filesTotal":  counts.Total,
-		"filesFailed": counts.Failed,
-	})
-}
-
 func (s *Server) apiStatsNow(c *gin.Context) {
 	ctx := c.Request.Context()
 	ruleID := strings.TrimSpace(c.Query("rule_id"))
-	sum, err := s.st.RealtimeSummary(ctx, ruleID)
-	globalSummary, _ := s.st.RealtimeSummary(ctx, "")
+	sum, err := s.st.FreshRealtimeSummary(ctx, ruleID, s.metricFreshSince(ctx))
+	globalSummary, _ := s.st.FreshRealtimeSummary(ctx, "", s.metricFreshSince(ctx))
 	if err != nil {
 		c.Status(http.StatusInternalServerError)
 		return
@@ -691,6 +499,7 @@ func (s *Server) apiStatsNow(c *gin.Context) {
 	todayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 	bytesToday, _ := s.st.StatsBytesSince(ctx, todayStart)
 	bytes24h, _ := s.st.StatsBytesSince(ctx, now.Add(-24*time.Hour))
+	statusCounts, _ := s.st.JobStatusCounts(ctx, store.JobFilter{})
 
 	c.Writer.Header().Set("Content-Type", "application/json; charset=utf-8")
 	_ = json.NewEncoder(c.Writer).Encode(map[string]any{
@@ -703,6 +512,7 @@ func (s *Server) apiStatsNow(c *gin.Context) {
 		"globalRunningJobs": globalSummary.RunningJobs,
 		"bytesToday":        bytesToday,
 		"bytes24h":          bytes24h,
+		"statusCounts":      statusCounts,
 	})
 }
 
@@ -764,7 +574,7 @@ func (s *Server) jobTerminatePost(c *gin.Context) {
 		return
 	}
 	next := safeNext(c.PostForm("next"), "/jobs")
-	s.redirect(c, next)
+	s.uiSuccess(c, "停止请求已提交，未完成内容可重试", next)
 }
 
 func errString(err error) string {

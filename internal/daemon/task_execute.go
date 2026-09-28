@@ -38,6 +38,7 @@ func (s *Supervisor) executeTask(ctx context.Context, job store.TransferJob, spe
 		"operation": spec.Operation,
 		"rule_id":   rule.ID,
 		"phase":     job.Phase,
+		"progress":  handle.Progress(bytes, status == store.TransferStatusDone),
 		"destination": map[string]any{
 			"remote":  rule.DstRemote,
 			"root":    rule.DstPath,
@@ -75,8 +76,18 @@ func (s *Supervisor) performTask(ctx context.Context, job *store.TransferJob, sp
 			return err
 		}
 		worker := &ruleWorker{st: s.st, rule: rule, jr: s.jobs}
+		job.Phase = "copying"
+		if err := s.st.SetTaskPhase(ctx, job.JobID, job.Phase, ""); err != nil {
+			return err
+		}
 		res := worker.runWithMetrics(ctx, settings, port, list, job.LogPath, job.JobID)
 		*bytes += res.BytesDone
+		if res.Err == nil {
+			job.Phase = "verifying"
+			if err := s.st.SetTaskPhase(ctx, job.JobID, job.Phase, ""); err != nil {
+				return err
+			}
+		}
 		entries, verifyErr := listDestination(ctx, rule, settings)
 		if verifyErr == nil {
 			*donePaths = verifiedPaths(spec.Files, entries)

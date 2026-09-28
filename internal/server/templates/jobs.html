@@ -1,173 +1,40 @@
 {{define "content"}}
-<div class="space-y-4">
-  <div>
-    <h1 class="text-xl font-bold">任务列表</h1>
-    <div class="text-sm opacity-70">每个任务对应一个独立的 rclone 进程与 RC 端口，统计互相隔离</div>
-  </div>
+<section data-list-page="jobs" data-list-url="/jobs" data-status-param="status">
+  <div class="page-heading"><div><h1>传输任务</h1><p class="page-description">按影片跟踪传输、校验与发布，查看等待和失败原因</p></div><div class="page-actions"><a href="/manual" class="btn btn-primary btn-sm">{{icon "plus"}}手动运行</a><a href="/rules" class="btn btn-sm btn-ghost">管理规则 {{icon "arrow-right"}}</a></div></div>
+  <form method="get" action="/jobs" class="app-filterbar" data-list-filter>
+    <input name="status" value="{{.F.Status}}" type="hidden"><input name="sort" value="{{.Sort}}" type="hidden"><input name="direction" value="{{.Direction}}" type="hidden"><input name="page_size" value="{{.PageSize}}" type="hidden">
+    <label class="app-search">{{icon "search"}}<input name="q" value="{{.F.Query}}" placeholder="影片、规则、任务 ID 或错误" aria-label="搜索任务"></label>
+    <select name="rule_id" class="select select-sm" aria-label="规则"><option value="">全部规则</option>{{range .Rules}}<option value="{{.ID}}" {{if eq $.F.RuleID .ID}}selected{{end}}>{{.ID}}</option>{{end}}</select>
+    <select name="mode" class="select select-sm" aria-label="传输方式"><option value="">全部传输方式</option><option value="copy" {{if eq .F.TransferMode "copy"}}selected{{end}}>复制</option><option value="move" {{if eq .F.TransferMode "move"}}selected{{end}}>移动</option></select>
+    <button type="submit" class="btn btn-sm">{{icon "filter"}}筛选</button><button class="btn btn-sm btn-ghost" data-list-reset type="button">重置</button>
+    <span class="app-refresh-state" data-refresh-state><span class="app-health-dot"></span>刚刚更新</span>
+  </form>
+  <div data-live-list>{{template "jobs_live" .}}</div>
+</section>
+{{end}}
 
-  <div class="card bg-base-100 border border-base-200">
-    <div class="card-body">
-      <form method="get" action="/jobs" class="flex flex-wrap gap-2 items-end">
-        <input type="hidden" name="page" value="1">
-
-        <label class="form-control w-full sm:w-44">
-          <div class="label"><span class="label-text">规则</span></div>
-          <select name="rule_id" class="select select-bordered select-sm">
-            <option value="">全部</option>
-            {{range .Rules}}<option value="{{.ID}}" {{if eq $.F.RuleID .ID}}selected{{end}}>{{.ID}}</option>{{end}}
-          </select>
-        </label>
-
-        <label class="form-control w-full sm:w-36">
-          <div class="label"><span class="label-text">状态</span></div>
-          <select name="status" class="select select-bordered select-sm">
-            <option value="" {{if eq .F.Status ""}}selected{{end}}>全部</option>
-            <option value="pending" {{if eq .F.Status "pending"}}selected{{end}}>等待执行</option>
-            <option value="blocked" {{if eq .F.Status "blocked"}}selected{{end}}>等待条件恢复</option>
-            <option value="running" {{if eq .F.Status "running"}}selected{{end}}>running</option>
-            <option value="done" {{if eq .F.Status "done"}}selected{{end}}>done</option>
-            <option value="failed" {{if eq .F.Status "failed"}}selected{{end}}>failed</option>
-            <option value="terminated" {{if eq .F.Status "terminated"}}selected{{end}}>terminated</option>
-          </select>
-        </label>
-
-        <label class="form-control w-full sm:w-36">
-          <div class="label"><span class="label-text">模式</span></div>
-          <select name="mode" class="select select-bordered select-sm">
-            <option value="" {{if eq .F.TransferMode ""}}selected{{end}}>全部</option>
-            <option value="copy" {{if eq .F.TransferMode "copy"}}selected{{end}}>copy</option>
-            <option value="move" {{if eq .F.TransferMode "move"}}selected{{end}}>move</option>
-          </select>
-        </label>
-
-        <label class="form-control w-full sm:w-60">
-          <div class="label"><span class="label-text">关键字</span></div>
-          <input type="text" name="q" value="{{.F.Query}}" class="input input-bordered input-sm" placeholder="任务ID/错误关键字">
-        </label>
-
-        <label class="form-control w-full sm:w-32">
-          <div class="label"><span class="label-text">页大小</span></div>
-          <select name="page_size" class="select select-bordered select-sm">
-            <option value="10" {{if eq .PageSize 10}}selected{{end}}>10</option>
-            <option value="20" {{if eq .PageSize 20}}selected{{end}}>20</option>
-            <option value="50" {{if eq .PageSize 50}}selected{{end}}>50</option>
-            <option value="100" {{if eq .PageSize 100}}selected{{end}}>100</option>
-          </select>
-        </label>
-
-        <div class="flex gap-2">
-          <button class="btn btn-sm btn-info text-info-content" type="submit">筛选</button>
-          <a class="btn btn-ghost btn-sm" href="/jobs">重置</a>
-        </div>
-      </form>
-
-      <div class="divider my-4"></div>
-
-      {{if .Jobs}}
-        <div class="overflow-x-auto">
-          <table class="table table-sm">
-            <thead>
-              <tr>
-                <th>任务 ID</th>
-                <th>规则</th>
-                <th>模式</th>
-                <th>状态</th>
-                <th>开始</th>
-                <th>结束</th>
-                <th>已传输</th>
-                <th>速度</th>
-                <th>错误</th>
-                <th>操作</th>
-              </tr>
-            </thead>
-            <tbody>
-              {{range .Jobs}}
-              <tr class="hover:bg-base-200/40">
-                <td><a class="link" href="/jobs/view?id={{.Job.JobID}}">{{.Job.JobID}}</a></td>
-                <td>{{if hasPrefix .Job.RuleID "manual_"}}手动运行{{else}}{{.Job.RuleID}}{{end}}</td>
-                <td>{{.Job.TransferMode}}</td>
-                <td>
-                  <span class="badge {{if eq .Job.Status "running"}}badge-success{{else if eq .Job.Status "failed"}}badge-error{{else if eq .Job.Status "terminated"}}badge-warning{{else}}badge-info{{end}}">{{.Job.Status}}</span>
-                </td>
-                <td class="opacity-70">{{ts .Job.StartedAt}}</td>
-                <td class="opacity-70">{{ts .Job.EndedAt}}</td>
-                <td class="opacity-70">{{if and (eq .Job.Status "running") .HasM}}{{humanBytes .Metric.Bytes}}{{else}}{{humanBytes .Job.BytesDone}}{{end}}</td>
-                <td class="opacity-70">{{if and (eq .Job.Status "running") .HasM}}{{humanSpeed .Metric.Speed}}{{else}}{{humanSpeed .Job.AvgSpeed}}{{end}}</td>
-                <td class="opacity-70" style="max-width: 320px; word-break: break-word;">{{.Job.Error}}</td>
-                <td class="w-20">
-                  {{if or (eq .Job.Status "running") (eq .Job.Status "pending") (eq .Job.Status "blocked")}}
-                    <form class="inline" method="post" action="/jobs/terminate" onsubmit="return confirm('确定要终止该任务吗？');">
-                      <input type="hidden" name="id" value="{{.Job.JobID}}">
-                      <input type="hidden" name="next" value="{{$.SelfURL}}">
-                      <button class="btn btn-error btn-xs whitespace-nowrap" type="submit">终止</button>
-                    </form>
-                  {{else}}
-                    {{if or (eq .Job.Status "failed") (eq .Job.Status "terminated")}}<form method="post" action="/jobs/retry"><input type="hidden" name="id" value="{{.Job.JobID}}"><button class="btn btn-xs btn-outline" type="submit">重试</button></form>{{else}}<span class="opacity-70">-</span>{{end}}
-                  {{end}}
-                </td>
-              </tr>
-              {{end}}
-            </tbody>
-          </table>
-        </div>
-
-        <div class="mt-4 flex flex-wrap gap-2 items-center justify-between">
-          <div class="text-sm opacity-70">共 {{.Total}} 条，页大小 {{.PageSize}}，第 {{.Page}} / {{.TotalPages}} 页</div>
-          <div class="flex flex-wrap gap-2 items-center">
-            <form method="get" action="/jobs" class="flex flex-wrap gap-2 items-center">
-              <input type="hidden" name="page_size" value="{{.PageSize}}">
-              <input type="hidden" name="rule_id" value="{{.F.RuleID}}">
-              <input type="hidden" name="status" value="{{.F.Status}}">
-              <input type="hidden" name="mode" value="{{.F.TransferMode}}">
-              <input type="hidden" name="q" value="{{.F.Query}}">
-              <input type="number" min="1" max="{{.TotalPages}}" name="page" value="{{.Page}}" class="input input-bordered input-sm w-28" placeholder="跳转页码">
-              <button class="btn btn-sm" type="submit">跳转</button>
-            </form>
-            {{if .HasPrev}}
-              <a class="btn btn-ghost btn-sm" href="{{.PrevURL}}">上一页</a>
-            {{else}}
-              <button class="btn btn-ghost btn-sm" disabled>上一页</button>
-            {{end}}
-            {{if .HasNext}}
-              <a class="btn btn-ghost btn-sm" href="{{.NextURL}}">下一页</a>
-            {{else}}
-              <button class="btn btn-ghost btn-sm" disabled>下一页</button>
-            {{end}}
-          </div>
-        </div>
-      {{else}}
-        <div class="app-empty">
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="opacity:.35">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M8.25 6.75h12M8.25 12h12M8.25 17.25h12" />
-            <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 6.75h.01M4.5 12h.01M4.5 17.25h.01" />
-          </svg>
-          <div>
-            {{if or .F.RuleID .F.Status .F.TransferMode .F.Query}}
-              <div class="app-empty-title">暂无匹配结果</div>
-              <div class="app-empty-desc">请调整筛选条件，或点击「重置」查看所有任务。</div>
-            {{else}}
-              <div class="app-empty-title">暂无任务记录</div>
-              <div class="app-empty-desc">当规则触发或手动运行后，任务会出现在这里。</div>
-            {{end}}
-          </div>
-          <div class="app-empty-actions">
-            <a class="btn btn-info text-info-content" href="/manual">手动运行</a>
-            <a class="btn btn-ghost" href="/rules">查看规则</a>
-          </div>
-        </div>
-      {{end}}
-    </div>
-  </div>
+{{define "jobs_live"}}
+<div class="app-tabs" data-list-tabs role="group" aria-label="任务状态">
+  <button type="button" class="app-tab {{if eq .F.Status ""}}active{{end}}" data-list-status="" aria-pressed="{{eq .F.Status ""}}">全部 <span class="app-tab-count">{{index .Summary "all"}}</span></button>
+  <button type="button" class="app-tab {{if eq .F.Status "running"}}active{{end}}" data-list-status="running" aria-pressed="{{eq .F.Status "running"}}">执行中 <span class="app-tab-count">{{index .Summary "running"}}</span></button>
+  <button type="button" class="app-tab {{if eq .F.Status "pending"}}active{{end}}" data-list-status="pending" aria-pressed="{{eq .F.Status "pending"}}">排队 <span class="app-tab-count">{{index .Summary "pending"}}</span></button>
+  <button type="button" class="app-tab {{if eq .F.Status "blocked"}}active{{end}}" data-list-status="blocked" aria-pressed="{{eq .F.Status "blocked"}}">等待条件 <span class="app-tab-count">{{index .Summary "blocked"}}</span></button>
+  <button type="button" class="app-tab {{if eq .F.Status "failed"}}active{{end}}" data-list-status="failed" aria-pressed="{{eq .F.Status "failed"}}">失败 <span class="app-tab-count">{{index .Summary "failed"}}</span></button>
+  <button type="button" class="app-tab {{if eq .F.Status "done"}}active{{end}}" data-list-status="done" aria-pressed="{{eq .F.Status "done"}}">已完成 <span class="app-tab-count">{{index .Summary "done"}}</span></button>
+  <button type="button" class="app-tab {{if eq .F.Status "terminated"}}active{{end}}" data-list-status="terminated" aria-pressed="{{eq .F.Status "terminated"}}">已停止 <span class="app-tab-count">{{index .Summary "terminated"}}</span></button>
 </div>
-
-<script>
-  // Page size should refresh immediately when changed.
-  document.addEventListener('change', (e) => {
-    const t = e.target;
-    if (!t || t.tagName !== 'SELECT') return;
-    if (t.name !== 'page_size') return;
-    const f = t.closest('form');
-    if (f) f.submit();
-  }, true);
-</script>
+<div class="app-table-wrap app-data-wrap"><table class="table app-data-table"><thead><tr>
+  <th><button class="app-sort" data-list-sort="name" data-sort-direction="asc" type="button">影片 / 规则 {{icon "sort"}}</button></th><th><button class="app-sort" data-list-sort="status" data-sort-direction="asc" type="button">阶段 {{icon "sort"}}</button></th>
+  <th>影片进度</th><th><button class="app-sort" data-list-sort="speed" data-sort-direction="desc" type="button">当前速度 {{icon "sort"}}</button></th><th class="cell-optional"><button class="app-sort" data-list-sort="created" data-sort-direction="desc" type="button">提交时间 {{icon "sort"}}</button></th><th>操作</th>
+</tr></thead><tbody data-list-rows>
+{{range .Jobs}}<tr data-row-id="{{.ID}}">
+  <td class="cell-title"><a href="/jobs/view?id={{.ID}}" data-open-job="{{.ID}}" class="row-title">{{.Title}}</a><span class="app-subtitle">{{.RuleLabel}} · {{modeName .Mode}} · <button class="app-copy-path app-mono" type="button" data-copy="{{.ID}}" data-copy-label="任务 ID" aria-label="复制任务 ID {{.ID}}">{{shortID .ID}}</button></span></td>
+  <td class="cell-status"><span class="{{statusClass .Status}}">{{.StatusLabel}}</span>{{if .RetryOf}}<span class="app-subtitle">重试任务</span>{{end}}{{if .Error}}<span class="app-subtitle app-wrap app-row-message" title="{{.Error}}">{{.Error}}</span>{{end}}</td>
+  <td class="cell-progress">{{if .ProgressKnown}}<span class="app-number app-small">{{humanBytes .ReadyBytes}} / {{humanBytes .PlannedBytes}}</span><div class="app-progress {{if eq .Status "done"}}is-done{{else if eq .Status "failed"}}is-failed{{end}}" role="progressbar" aria-label="影片进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{printf "%.1f" .Percent}}"><span style="width:{{printf "%.1f" .Percent}}%"></span></div>{{else}}<span class="app-muted app-small">{{if eq .Status "pending"}}等待准备清单{{else}}清单待确认{{end}}</span>{{end}}<span class="app-subtitle">{{if .FilesTotal}}{{.FilesTotal}} 个文件{{else}}文件数量待确认{{end}}</span></td>
+  <td class="cell-rate app-number">{{if gt .Speed 0.0}}{{humanSpeed .Speed}}{{else}}—{{end}}<span class="app-subtitle">{{if .Terminal}}平均 {{humanSpeed .AverageSpeed}}{{else if gt .ETA 0}}约 {{.ETA}} 秒{{else if gt .ReusedBytes 0}}复用 {{humanBytes .ReusedBytes}}{{end}}</span></td>
+  <td class="cell-optional"><span title="{{ts .CreatedAt}}">{{relativeTime .CreatedAt}}</span><span class="app-subtitle">{{if eq .Origin "api"}}API 提交{{else if eq .Origin "manual"}}手动运行{{else}}规则调度{{end}}</span></td>
+  <td class="cell-actions"><div class="app-row-actions"><a class="btn btn-sm btn-ghost" href="/jobs/view?id={{.ID}}" data-open-job="{{.ID}}">详情 {{icon "chevron-right"}}</a>{{if .CanRetry}}<form method="post" action="/jobs/retry" data-ui-form><input type="hidden" name="id" value="{{.ID}}"><button type="submit" class="btn btn-sm btn-ghost" aria-label="重试 {{.Title}}">{{icon "refresh"}}</button></form>{{end}}</div></td>
+</tr>{{else}}<tr data-row-id="empty"><td colspan="6"><div class="app-empty">{{icon "tasks"}}<div class="app-empty-title">暂无匹配任务</div><p class="app-empty-desc">调整筛选条件，或通过规则和手动运行创建任务。</p><a class="btn btn-primary btn-sm" href="/manual">{{icon "play"}}手动运行</a></div></td></tr>{{end}}
+</tbody></table></div>
+{{template "list_pagination" .}}
 {{end}}

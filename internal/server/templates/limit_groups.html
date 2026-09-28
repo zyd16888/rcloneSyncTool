@@ -1,125 +1,27 @@
 {{define "content"}}
-<div class="space-y-4">
-  <div>
-    <h1 class="text-xl font-bold">限流分组管理</h1>
-    <div class="text-sm opacity-70">创建分组并在规则中引用，可实现多规则共享流量配额。</div>
-  </div>
-
-  <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-    <!-- List -->
-    <div class="card bg-base-100 border border-base-200">
-      <div class="card-body">
-        <h2 class="card-title text-base">分组列表</h2>
-        {{if .Groups}}
-        <div class="overflow-x-auto">
-          <table class="table table-sm">
-            <thead>
-              <tr>
-                <th>名称</th>
-                <th>每日限制</th>
-                <th>操作</th>
-              </tr>
-            </thead>
-            <tbody>
-              {{range .Groups}}
-              <tr class="hover:bg-base-200/40">
-                <td class="font-bold">{{.Name}}</td>
-                <td>{{if gt .DailyLimitBytes 0}}{{humanBytes .DailyLimitBytes}}{{else}}不限{{end}}</td>
-                <td>
-                  <button class="btn btn-xs btn-ghost" onclick="editGroup('{{.Name}}', '{{if gt .DailyLimitBytes 0}}{{humanBytes .DailyLimitBytes}}{{else}}0{{end}}')">编辑</button>
-                  <form method="post" action="/limit_groups/delete" class="inline" onsubmit="return confirm('确定删除分组 {{.Name}} 吗？关联该分组的规则将变为无分组限制。');">
-                    <input type="hidden" name="name" value="{{.Name}}">
-                    <button class="btn btn-xs btn-error btn-ghost" type="submit">删除</button>
-                  </form>
-                </td>
-              </tr>
-              {{end}}
-            </tbody>
-          </table>
-        </div>
-        {{else}}
-        <div class="text-sm opacity-50 py-4 text-center">暂无分组</div>
-        {{end}}
-      </div>
-    </div>
-
-    <!-- Edit/Create -->
-    <div class="card bg-base-100 border border-base-200 h-fit">
-      <div class="card-body">
-        <h2 class="card-title text-base" id="formTitle">新建/编辑分组</h2>
-        <form method="post" action="/limit_groups/save" class="space-y-4">
-          <label class="form-control">
-            <div class="label"><span class="label-text">分组名称</span></div>
-            <input type="text" id="nameInput" name="name" class="input input-bordered" placeholder="例如：gdrive_main" required>
-            <div class="label"><span class="label-text-alt opacity-70">唯一标识，不支持修改名称（如需修改请删除重建）。</span></div>
-          </label>
-          <label class="form-control">
-            <div class="label"><span class="label-text">每日流量限制</span></div>
-            <input type="text" id="limitInput" name="daily_limit" class="input input-bordered" placeholder="例如：750G / 0">
-            <div class="label"><span class="label-text-alt opacity-70">例如：750G。填 0 或留空表示不限制。</span></div>
-          </label>
-
-          <div class="form-control">
-            <div class="label"><span class="label-text">包含规则</span></div>
-            <div class="border border-base-200 rounded-lg p-2 max-h-60 overflow-y-auto space-y-1">
-              {{if .Rules}}
-                {{range .Rules}}
-                <label class="label cursor-pointer justify-start gap-3 hover:bg-base-200/50 rounded px-2 py-1">
-                  <input type="checkbox" name="rule_ids" value="{{.ID}}" class="checkbox checkbox-sm checkbox-primary rule-check" data-current-group="{{.LimitGroup}}">
-                  <span class="label-text font-mono text-xs flex-1 truncate">
-                    {{.ID}}
-                    {{if .LimitGroup}}
-                      <span class="ml-2 badge badge-xs badge-ghost opacity-70">当前组: {{.LimitGroup}}</span>
-                    {{end}}
-                  </span>
-                </label>
-                {{end}}
-              {{else}}
-                <div class="text-xs opacity-50 text-center py-2">暂无规则</div>
-              {{end}}
-            </div>
-            <div class="label"><span class="label-text-alt opacity-70">勾选要加入此分组的规则。</span></div>
-          </div>
-
-          <div class="flex gap-2 justify-end">
-            <button type="button" class="btn btn-ghost" onclick="resetForm()">重置</button>
-            <button type="submit" class="btn btn-primary">保存</button>
-          </div>
-        </form>
-      </div>
-    </div>
-  </div>
+<div class="page-heading"><div><h1>限流分组</h1><p class="page-description">多条规则共享过去 24 小时的传输配额</p></div><a class="btn btn-sm btn-ghost" href="/rules">{{icon "arrow-left"}}同步规则</a></div>
+<div class="grid grid-cols-1 xl:grid-cols-2 items-start gap-5">
+  <div class="app-table-wrap"><table class="table"><thead><tr><th>分组</th><th>24h 限额</th><th>操作</th></tr></thead><tbody>{{range .Groups}}<tr><td class="font-semibold app-wrap">{{.Name}}</td><td class="app-number">{{if gt .DailyLimitBytes 0}}{{humanBytes .DailyLimitBytes}}{{else}}不限{{end}}</td><td><div class="app-inline"><button type="button" class="btn btn-xs btn-ghost" data-edit-group="{{.Name}}" data-group-limit="{{.DailyLimitBytes}}">{{icon "edit"}}编辑</button><form method="post" action="/limit_groups/delete" data-ui-form data-refresh-page data-confirm-title="删除分组“{{.Name}}”？" data-confirm-message="关联规则将恢复使用自己的独立限额，已有流量记录会保留。" data-confirm-label="删除分组"><input name="name" value="{{.Name}}" type="hidden"><button class="btn btn-xs btn-ghost text-error" type="submit" aria-label="删除分组 {{.Name}}">{{icon "close"}}</button></form></div></td></tr>{{else}}<tr><td colspan="3"><div class="app-empty">{{icon "settings"}}<div class="app-empty-title">暂无分组</div><p class="app-empty-desc">创建分组后可选择需要共享额度的规则。</p></div></td></tr>{{end}}</tbody></table></div>
+  <form class="app-form-panel h-fit" method="post" action="/limit_groups/save" data-ui-form data-refresh-page data-edit-form>
+    <h2 class="app-section-title" id="groupFormTitle">新建分组</h2><div class="app-form-grid"><label class="app-field">分组名称<input name="name" id="groupName" class="input" required placeholder="例如：媒体同步"><span class="app-field-help">名称作为唯一标识</span></label><label class="app-field">过去 24 小时限额<input name="daily_limit" id="groupLimit" class="input" placeholder="例如 750G 或 0"><span class="app-field-help">0 或留空表示不限</span></label></div>
+    <h3 class="app-section-title mt-6">包含规则</h3><div class="space-y-3">{{range .Rules}}<label class="app-inline"><input name="rule_ids" type="checkbox" class="checkbox" value="{{.ID}}" data-current-group="{{.LimitGroup}}"><span class="app-wrap">{{.ID}}</span>{{if .LimitGroup}}<span class="status">当前组：{{.LimitGroup}}</span>{{end}}</label>{{else}}<p class="app-field-help">尚未配置规则</p>{{end}}</div>
+    <div class="alert alert-error app-form-feedback" data-form-feedback hidden role="alert"></div>
+    <footer class="app-savebar"><span data-draft-state>保存后更新关联规则</span><div class="page-actions"><button class="btn btn-sm btn-ghost" type="button" data-new-group>新建分组</button><button class="btn btn-sm btn-primary" type="submit">{{icon "check"}}保存分组</button></div></footer>
+  </form>
 </div>
-
 <script>
-const groupRulesMap = {{.GroupRulesMap}}; // Injected by server
-
-function editGroup(name, limit) {
-  document.getElementById('formTitle').innerText = "编辑分组: " + name;
-  const nameInput = document.getElementById('nameInput');
-  nameInput.value = name;
-  nameInput.readOnly = true;
-  document.getElementById('limitInput').value = limit;
-
-  // Reset all checks first
-  document.querySelectorAll('.rule-check').forEach(el => el.checked = false);
-  
-  // Check rules belonging to this group
-  if (groupRulesMap && groupRulesMap[name]) {
-    groupRulesMap[name].forEach(ruleID => {
-      const el = document.querySelector(`.rule-check[value="${CSS.escape(ruleID)}"]`);
-      if (el) el.checked = true;
-    });
-  }
-}
-
-function resetForm() {
-  document.getElementById('formTitle').innerText = "新建/编辑分组";
-  const nameInput = document.getElementById('nameInput');
-  nameInput.value = "";
-  nameInput.readOnly = false;
-  document.getElementById('limitInput').value = "";
-  document.querySelectorAll('.rule-check').forEach(el => el.checked = false);
-}
+document.querySelectorAll('[data-edit-group]').forEach(button=>button.addEventListener('click',async()=>{
+  const form=document.getElementById('groupName').form,name=button.dataset.editGroup;
+  if(form.dataset.dirty==='1'&&!await App.confirm({title:'载入另一组配置？',message:'当前未保存的更改会被替换。',label:'载入',danger:false}))return;
+  document.getElementById('groupName').value=name;document.getElementById('groupName').readOnly=true;document.getElementById('groupLimit').value=button.dataset.groupLimit;
+  document.getElementById('groupFormTitle').textContent='编辑分组：'+name;form.querySelectorAll('[name=rule_ids]').forEach(input=>input.checked=input.dataset.currentGroup===name);
+  App.forms.markClean(form);form.dispatchEvent(new Event('change',{bubbles:true}));form.scrollIntoView({block:'nearest'});
+}));
+document.querySelector('[data-new-group]').addEventListener('click',async()=>{
+  const form=document.getElementById('groupName').form;
+  if(form.dataset.dirty==='1'&&!await App.confirm({title:'新建另一分组？',message:'当前未保存的更改会被替换。',label:'新建',danger:false}))return;
+  form.elements.name.value='';form.elements.daily_limit.value='';form.querySelectorAll('[name=rule_ids]').forEach(input=>input.checked=false);
+  document.getElementById('groupName').readOnly=false;document.getElementById('groupFormTitle').textContent='新建分组';App.forms.markClean(form);form.dispatchEvent(new Event('change',{bubbles:true}));
+});
 </script>
 {{end}}

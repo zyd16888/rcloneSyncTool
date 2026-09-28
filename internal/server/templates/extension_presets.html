@@ -1,76 +1,14 @@
 {{define "content"}}
-<div class="space-y-4">
-  <div class="flex items-center justify-between">
-    <div>
-      <h1 class="text-xl font-bold">扩展名预设</h1>
-      <div class="text-sm opacity-70">预定义的扩展名集合，方便在规则中快速选择使用。</div>
-    </div>
-    <a class="btn btn-sm btn-ghost" href="/rules">返回规则列表</a>
-  </div>
-
-  <div class="card bg-base-100 border border-base-200">
-    <div class="card-body">
-      <h3 class="card-title text-base">添加/编辑预设</h3>
-      <form method="post" action="/extension_presets/save" class="flex gap-4 items-end">
-        <label class="form-control w-full max-w-xs">
-          <div class="label"><span class="label-text">预设名称</span></div>
-          <input type="text" name="name" placeholder="例如：网页文件" class="input input-bordered" required>
-        </label>
-        <label class="form-control w-full">
-          <div class="label"><span class="label-text">扩展名</span></div>
-          <input type="text" name="extensions" placeholder=".url .html .htm" class="input input-bordered" required>
-        </label>
-        <button class="btn btn-primary" type="submit">保存</button>
-      </form>
-    </div>
-  </div>
-
-  <div class="card bg-base-100 border border-base-200">
-    <div class="card-body p-0">
-      <table class="table">
-        <thead>
-          <tr>
-            <th>名称</th>
-            <th>内容</th>
-            <th class="w-20">操作</th>
-          </tr>
-        </thead>
-        <tbody>
-          {{range .Presets}}
-          <tr class="hover:bg-base-200 cursor-pointer">
-            <td class="font-bold">{{.Name}}</td>
-            <td class="font-mono text-sm opacity-70 break-all" title="{{.Extensions}}">{{.Extensions}}</td>
-            <td>
-              <form method="post" action="/extension_presets/delete" onsubmit="return confirm('确定删除？');">
-                <input type="hidden" name="name" value="{{.Name}}">
-                <button class="btn btn-xs btn-error btn-outline">删除</button>
-              </form>
-            </td>
-          </tr>
-          {{else}}
-          <tr>
-            <td colspan="3" class="text-center opacity-50 py-8">暂无预设，请先添加。</td>
-          </tr>
-          {{end}}
-        </tbody>
-      </table>
-    </div>
-  </div>
-</div>
-
+<div class="page-heading"><div><h1>扩展名预设</h1><p class="page-description">维护常用过滤扩展名，在规则和手动任务中快速添加</p></div><a class="btn btn-sm btn-ghost" href="/rules">{{icon "arrow-left"}}同步规则</a></div>
+<form class="app-form-panel mb-5" method="post" action="/extension_presets/save" data-ui-form data-refresh-page data-edit-form>
+  <h2 class="app-section-title">新建 / 编辑预设</h2><div class="app-form-grid"><label class="app-field">预设名称<input name="name" class="input" required placeholder="例如：网页文件"></label><label class="app-field">扩展名<input name="extensions" class="input" required placeholder=".url .html .htm"><span class="app-field-help">使用空格分隔</span></label></div><div class="alert alert-error app-form-feedback" data-form-feedback hidden role="alert"></div><div class="page-actions justify-end mt-5"><button class="btn btn-sm btn-ghost" type="button" data-form-reset>重置更改</button><button class="btn btn-sm btn-primary" type="submit">{{icon "check"}}保存预设</button></div>
+</form>
+<div class="app-table-wrap"><table class="table"><thead><tr><th>名称</th><th>扩展名</th><th>操作</th></tr></thead><tbody>{{range .Presets}}<tr><td class="font-semibold app-wrap">{{.Name}}</td><td class="app-mono app-wrap">{{.Extensions}}</td><td><div class="app-inline"><button class="btn btn-xs btn-ghost" type="button" data-edit-preset="{{.Name}}" data-extensions="{{.Extensions}}">{{icon "edit"}}编辑</button><form method="post" action="/extension_presets/delete" data-ui-form data-refresh-page data-confirm-title="删除预设“{{.Name}}”？" data-confirm-message="已经保存到规则中的扩展名不受影响。" data-confirm-label="删除预设"><input name="name" value="{{.Name}}" type="hidden"><button class="btn btn-xs btn-ghost text-error" type="submit" aria-label="删除预设 {{.Name}}">{{icon "close"}}</button></form></div></td></tr>{{else}}<tr><td colspan="3"><div class="app-empty">{{icon "filter"}}<div class="app-empty-title">暂无预设</div><p class="app-empty-desc">添加常用扩展名组合后，可在规则配置中复用。</p></div></td></tr>{{end}}</tbody></table></div>
 <script>
-  // 点击表格行自动填充到上方表单以便编辑
-  document.querySelectorAll('tbody tr').forEach(tr => {
-    tr.addEventListener('click', (e) => {
-      if (e.target.closest('button')) return; // 忽略删除按钮点击
-      const name = tr.cells[0].innerText.trim();
-      const ext = tr.cells[1].innerText.trim();
-      const form = document.querySelector('form[action="/extension_presets/save"]');
-      if (form) {
-        form.querySelector('[name=name]').value = name;
-        form.querySelector('[name=extensions]').value = ext;
-      }
-    });
-  });
+document.querySelectorAll('[data-edit-preset]').forEach(button=>button.addEventListener('click',async()=>{
+  const form=document.querySelector('form[action="/extension_presets/save"]');
+  if(form.dataset.dirty==='1'&&!await App.confirm({title:'载入另一预设？',message:'当前未保存的更改会被替换。',label:'载入',danger:false}))return;
+  form.elements.name.value=button.dataset.editPreset;form.elements.extensions.value=button.dataset.extensions;App.forms.markClean(form);form.dispatchEvent(new Event('input',{bubbles:true}));form.scrollIntoView({block:'nearest'});
+}));
 </script>
 {{end}}

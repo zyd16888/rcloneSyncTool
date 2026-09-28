@@ -1,0 +1,36 @@
+{{define "app_dialogs"}}
+<div id="appToasts" class="app-toast-stack" aria-live="polite"></div>
+<dialog id="appConfirm" class="modal" aria-labelledby="appConfirmTitle">
+  <div class="modal-box max-w-md">
+    <h3 id="appConfirmTitle" class="font-semibold text-lg"></h3>
+    <p id="appConfirmMessage" class="app-muted mt-3 app-wrap"></p>
+    <div class="modal-action"><button id="appConfirmCancel" type="button" class="btn">取消</button><button id="appConfirmOK" type="button" class="btn btn-error">确认</button></div>
+  </div>
+</dialog>
+<dialog id="jobDrawer" class="app-drawer-dialog" aria-labelledby="jobDrawerTitle">
+  <header class="app-drawer-head"><h2 id="jobDrawerTitle" class="font-semibold">任务详情</h2><button class="btn btn-ghost btn-square" type="button" data-close-job aria-label="关闭任务详情">{{icon "close"}}</button></header>
+  <div id="jobDrawerBody" class="app-drawer-body"></div>
+</dialog>
+{{end}}
+
+{{define "list_pagination"}}
+<div class="app-pagination" id="listPagination" data-page-number="{{.Page}}">
+  <span>共 {{.Total}} 条 · 第 {{.Page}} / {{.TotalPages}} 页</span>
+  <div class="app-pager"><label for="listPageSize" class="app-small">每页</label><select id="listPageSize" class="select select-sm" data-page-size aria-label="每页数量"><option value="10" {{if eq .PageSize 10}}selected{{end}}>10</option><option value="20" {{if eq .PageSize 20}}selected{{end}}>20</option><option value="50" {{if eq .PageSize 50}}selected{{end}}>50</option><option value="100" {{if eq .PageSize 100}}selected{{end}}>100</option></select>
+    {{if .HasPrev}}<a class="btn btn-sm btn-ghost" href="{{.PrevURL}}" data-page-link aria-label="上一页">{{icon "chevron-left"}}</a>{{else}}<button class="btn btn-sm btn-ghost" disabled aria-label="上一页">{{icon "chevron-left"}}</button>{{end}}
+    {{if .HasNext}}<a class="btn btn-sm btn-ghost" href="{{.NextURL}}" data-page-link aria-label="下一页">{{icon "chevron-right"}}</a>{{else}}<button class="btn btn-sm btn-ghost" disabled aria-label="下一页">{{icon "chevron-right"}}</button>{{end}}
+  </div>
+</div>
+{{end}}
+
+{{define "log_panel"}}
+<div class="app-log-panel" data-log-panel>
+  <div class="app-log-tools">
+    <select data-log-level class="select select-sm" aria-label="日志等级"><option value="">全部等级</option><option value="error">错误</option><option value="warning">警告</option><option value="info">信息</option><option value="debug">调试</option></select>
+    <input data-log-search class="input input-sm flex-1 min-w-0" placeholder="搜索当前日志" aria-label="搜索当前日志">
+    <label class="app-inline app-small"><input type="checkbox" data-log-follow checked class="checkbox">跟随最新</label>
+  </div>
+  <div class="app-log-box" data-log-box role="log" aria-label="日志内容"></div>
+  <div class="app-log-meta"><span data-log-state>正在连接日志</span><div class="app-inline"><button class="btn btn-xs btn-ghost" data-log-new type="button" hidden>查看新日志</button><button class="btn btn-xs btn-ghost" data-log-copy type="button">{{icon "copy"}}复制</button><button class="btn btn-xs btn-ghost" data-log-export type="button">{{icon "download"}}导出当前日志</button><button class="btn btn-xs btn-ghost" data-log-clear type="button">清空显示</button></div></div>
+</div>
+{{end}}

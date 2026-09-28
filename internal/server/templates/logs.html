@@ -1,29 +1,4 @@
 {{define "content"}}
-<div class="space-y-4">
-  <div>
-    <h1 class="text-xl font-bold">日志</h1>
-    <div class="text-sm opacity-70">系统运行日志（daemon.log）实时输出</div>
-  </div>
-
-  <div class="card bg-base-100 border border-base-200">
-    <div class="card-body">
-      <div class="card-title text-base">系统日志</div>
-      <pre id="daemonLogBox" class="bg-neutral text-neutral-content rounded-xl p-3 text-xs leading-relaxed overflow-auto" style="max-height: 560px;"></pre>
-      <div class="text-sm opacity-70 mt-2">日志文件：{{.AppLogPath}}</div>
-    </div>
-  </div>
-</div>
-
-<script>
-  const box = document.getElementById("daemonLogBox");
-  function append(text) {
-    if (!text) return;
-    box.textContent += text;
-    if (!text.endsWith("\n")) box.textContent += "\n";
-    box.scrollTop = box.scrollHeight;
-  }
-  const es = new EventSource("/api/log/daemon/stream");
-  es.addEventListener("log", (e) => append(e.data));
-  es.onerror = () => { /* keep trying */ };
-</script>
+<div class="page-heading"><div><h1>系统日志</h1><p class="page-description">查看运行记录，按等级和关键词定位问题</p></div><a class="btn btn-sm btn-ghost" href="/jobs">查看任务日志 {{icon "arrow-right"}}</a></div>
+<div class="app-form-panel" data-log-url="/api/log/daemon/stream">{{template "log_panel" .}}<p class="app-field-help app-wrap mt-4">日志文件：{{.AppLogPath}}</p></div>
 {{end}}

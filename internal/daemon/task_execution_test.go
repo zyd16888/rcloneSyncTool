@@ -403,6 +403,13 @@ func TestAtomicMovieFailureRetryPublishesThenCleansSource(t *testing.T) {
 	if result.BytesDone != 8 {
 		t.Fatalf("retry retransferred completed stage file: %d", result.BytesDone)
 	}
+	var progressResult struct{ Progress TaskProgress }
+	if err := json.Unmarshal([]byte(result.ResultJSON), &progressResult); err != nil {
+		t.Fatal(err)
+	}
+	if progressResult.Progress.ReusedBytes != 8 || progressResult.Progress.ReadyBytes != 16 {
+		t.Fatalf("retry progress omitted reused staging content: %+v", progressResult.Progress)
+	}
 	assertTransferResultContract(t, f.st, result, "Movie", "mock:/library/Movie")
 }
 func TestAtomicPublishConflictKeepsSourceAndStaging(t *testing.T) {

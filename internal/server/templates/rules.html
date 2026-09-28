@@ -1,58 +1,51 @@
 {{define "content"}}
-<div class="space-y-4">
-  <div class="flex flex-wrap gap-3 items-center justify-between">
-    <div><h1 class="text-xl font-bold">同步规则</h1><div class="text-sm opacity-70">调度开关、实际任务与扫描结果</div></div>
-    <div class="flex flex-wrap gap-2"><a class="btn btn-sm btn-primary" href="/rules/edit">新建规则</a><a class="btn btn-sm btn-outline" href="/limit_groups">限流分组</a><a class="btn btn-sm btn-outline" href="/extension_presets">扩展名预设</a><a class="btn btn-sm btn-ghost" href="/manual">手动运行</a></div>
-  </div>
-  {{if .Notice}}<div class="alert {{if .IsError}}alert-error{{else}}alert-info{{end}}"><span>{{.Notice}}</span></div>{{end}}
-  <div class="card bg-base-100 border border-base-200"><div class="card-body p-4">
-    <form method="get" action="/rules" class="grid grid-cols-2 lg:flex lg:flex-wrap gap-3 items-end" id="rulesFilter">
-      <label class="form-control w-full lg:w-56 col-span-2"><div class="label"><span class="label-text">规则或路径</span></div><input class="input input-bordered input-sm" name="q" value="{{.Q}}" placeholder="ID、源路径、目标路径"></label>
-      <label class="form-control w-full sm:w-32"><div class="label"><span class="label-text">调度开关</span></div><select class="select select-bordered select-sm" name="enable"><option value="">全部</option><option value="enabled" {{if eq .Enable "enabled"}}selected{{end}}>已启用</option><option value="paused" {{if eq .Enable "paused"}}selected{{end}}>已暂停</option></select></label>
-      <label class="form-control w-full sm:w-36"><div class="label"><span class="label-text">执行状态</span></div><select class="select select-bordered select-sm" name="runtime"><option value="">全部</option><option value="running" {{if eq .RuntimeFilter "running"}}selected{{end}}>正在执行</option><option value="queued" {{if eq .RuntimeFilter "queued"}}selected{{end}}>等待执行</option><option value="failed" {{if eq .RuntimeFilter "failed"}}selected{{end}}>当前有失败</option><option value="blocked" {{if eq .RuntimeFilter "blocked"}}selected{{end}}>存在阻塞</option><option value="idle" {{if eq .RuntimeFilter "idle"}}selected{{end}}>空闲</option></select></label>
-      <label class="form-control w-full sm:w-40"><div class="label"><span class="label-text">限流分组</span></div><select class="select select-bordered select-sm" name="group"><option value="">全部</option>{{range .Groups}}<option value="{{.Name}}" {{if eq $.GroupFilter .Name}}selected{{end}}>{{.Name}}</option>{{end}}</select></label>
-      <label class="form-control w-24"><div class="label"><span class="label-text">每页</span></div><select class="select select-bordered select-sm" name="page_size"><option value="10" {{if eq .PageSize 10}}selected{{end}}>10</option><option value="20" {{if eq .PageSize 20}}selected{{end}}>20</option><option value="50" {{if eq .PageSize 50}}selected{{end}}>50</option><option value="100" {{if eq .PageSize 100}}selected{{end}}>100</option></select></label>
-      <button class="btn btn-sm btn-primary" type="submit">筛选</button><a class="btn btn-sm btn-ghost" href="/rules">重置</a>
-      <label class="flex items-center gap-2 text-xs opacity-70"><input id="autoRefreshRules" type="checkbox" class="checkbox checkbox-xs" checked>自动刷新</label>
-    </form>
-  </div></div>
-  <div class="card bg-base-100 border border-base-200"><div class="overflow-x-auto">
-    <table class="table table-sm" style="min-width:880px"><thead><tr><th>规则 / 状态</th><th>源 → 目标</th><th>文件 / 任务</th><th>扫描 / 阻塞</th><th>操作</th></tr></thead>
-    <tbody id="rulesRows">
-    {{range .Rules}}<tr>
-      <td><a class="link font-mono text-xs" href="/rules/edit?id={{.Rule.ID}}">{{.Rule.ID}}</a><div class="flex flex-wrap gap-1 mt-2">{{if .Rule.Enabled}}<span class="badge badge-success badge-outline badge-sm">已启用</span>{{else}}<span class="badge badge-ghost badge-sm">已暂停</span>{{end}}{{if gt .Activity.Running 0}}<span class="badge badge-primary badge-sm">执行 {{.Activity.Running}}</span>{{else if gt .Activity.Pending 0}}<span class="badge badge-warning badge-sm">任务等待 {{.Activity.Pending}}</span>{{else if .Runtime.BlockReason}}<span class="badge badge-warning badge-sm">等待条件恢复</span>{{else if gt .Counts.New 0}}<span class="badge badge-ghost badge-sm">等待稳定</span>{{else}}<span class="badge badge-ghost badge-sm">空闲</span>{{end}}</div><div class="text-xs opacity-60 mt-2">{{.Rule.TransferMode}}{{if .Rule.AtomicPublish}} · 整目录发布{{else if .Rule.GroupByDirectory}} · 影片目录分组{{end}}</div></td>
-      <td><div class="text-xs break-all max-w-xs min-w-48">{{if eq .Rule.SrcKind "local"}}{{.Rule.SrcLocalRoot}}{{else}}{{.Rule.SrcRemote}}:{{.Rule.SrcPath}}{{end}}</div><div class="opacity-50 text-xs">↓</div><div class="text-xs break-all max-w-xs min-w-48">{{.Rule.DstRemote}}:{{.Rule.DstPath}}</div><div class="text-xs opacity-60 mt-2">扫描 {{.Rule.ScanIntervalSec}}s · 稳定 {{.Rule.StableSeconds}}s · 并发 {{.Rule.MaxParallelJobs}}{{if .Rule.LimitGroup}} · 组 {{.Rule.LimitGroup}}{{end}}</div><div class="text-xs opacity-60">24h {{humanBytes .Usage24h}}{{if and (not .Rule.LimitGroup) (gt .Rule.DailyLimitBytes 0)}} / {{humanBytes .Rule.DailyLimitBytes}}{{end}}</div></td>
-      <td class="text-xs whitespace-nowrap"><div>等待稳定 {{.Counts.New}} · 可排队 {{.Counts.Stable}}</div><div class="mt-1">排队 {{.Counts.Queued}} · 传输 {{.Counts.Transferring}}</div><div class="mt-1">完成 {{.Counts.Done}} · <span class="{{if gt .Counts.Failed 0}}text-error{{end}}">失败 {{.Counts.Failed}}</span></div>{{if gt .Counts.Missing 0}}<div class="mt-1 opacity-60">源文件缺失 {{.Counts.Missing}}</div>{{end}}</td>
-      <td class="text-xs max-w-xs"><div class="opacity-60">{{if .Runtime.ScanEndedAt.IsZero}}等待首次扫描{{else}}最近扫描 {{ts .Runtime.ScanEndedAt}}{{end}}</div><div class="mt-1">发现 {{.Runtime.Discovered}} · 可传 {{.Runtime.Eligible}} · 过滤 {{.Runtime.Filtered}}</div>{{if .Runtime.ScanError}}<div class="text-error break-all mt-1">扫描失败：{{.Runtime.ScanError}}</div>{{end}}{{if .Runtime.BlockMessage}}<div class="text-warning break-all mt-1">{{.Runtime.BlockMessage}}</div>{{end}}</td>
-      <td><div class="flex flex-wrap gap-1 min-w-40">
-        <form method="post" action="/rules/toggle"><input type="hidden" name="id" value="{{.Rule.ID}}"><input type="hidden" name="return_url" value="{{$.SelfURL}}"><input type="hidden" name="enabled" value="{{if .Rule.Enabled}}0{{else}}1{{end}}"><button class="btn btn-xs btn-outline" type="submit">{{if .Rule.Enabled}}暂停新任务{{else}}启用{{end}}</button></form>
-        <form method="post" action="/rules/scan"><input type="hidden" name="id" value="{{.Rule.ID}}"><input type="hidden" name="return_url" value="{{$.SelfURL}}"><button class="btn btn-xs btn-ghost" type="submit">扫描</button></form>
-        <form method="post" action="/rules/retry_failed"><input type="hidden" name="id" value="{{.Rule.ID}}"><input type="hidden" name="return_url" value="{{$.SelfURL}}"><button class="btn btn-xs btn-ghost" type="submit">重试失败</button></form>
-        <a class="btn btn-xs btn-ghost" href="/jobs?rule_id={{.Rule.ID}}">任务</a><a class="btn btn-xs btn-ghost" href="/rules/edit?copy_from_id={{.Rule.ID}}">复制</a>
-        <form method="post" action="/rules/delete" onsubmit="return confirm('删除规则会取消尚未执行的任务，保留历史记录。确定继续？');"><input type="hidden" name="id" value="{{.Rule.ID}}"><input type="hidden" name="return_url" value="{{$.SelfURL}}"><button class="btn btn-xs btn-error btn-outline" type="submit">删除</button></form>
-      </div></td>
-    </tr>{{else}}<tr><td colspan="5" class="text-center opacity-60 py-8">暂无匹配规则，请调整筛选条件或新建规则。</td></tr>{{end}}
-    </tbody></table>
-  </div><div id="rulesPagination" class="p-4 flex flex-wrap items-center justify-between gap-2"><div class="text-sm opacity-70">共 {{.Total}} 条 · 第 {{.Page}} / {{.TotalPages}} 页</div><div class="flex gap-2">{{if .HasPrev}}<a class="btn btn-sm btn-ghost" href="{{.PrevURL}}">上一页</a>{{end}}{{if .HasNext}}<a class="btn btn-sm btn-ghost" href="{{.NextURL}}">下一页</a>{{end}}</div></div></div>
+<section data-list-page="rules" data-list-url="/rules" data-status-param="runtime">
+  <div class="page-heading"><div><h1>同步规则</h1><p class="page-description">查看实际执行状态，管理扫描与同步策略</p></div><div class="page-actions"><a href="/manual" class="btn btn-ghost btn-sm">{{icon "play"}}手动运行</a><a href="/rules/edit" class="btn btn-primary btn-sm">{{icon "plus"}}新建规则</a></div></div>
+  {{if .Notice}}<div class="alert {{if .IsError}}alert-error{{else}}alert-success{{end}} mb-4" role="status">{{.Notice}}</div>{{end}}
+  <form method="get" action="/rules" data-list-filter class="app-filterbar">
+    <input type="hidden" name="runtime" value="{{.RuntimeFilter}}"><input type="hidden" name="sort" value="{{.Sort}}"><input type="hidden" name="direction" value="{{.Direction}}"><input type="hidden" name="page_size" value="{{.PageSize}}">
+    <label class="app-search">{{icon "search"}}<input name="q" value="{{.Q}}" placeholder="搜索规则或源 / 目标路径" aria-label="搜索规则"></label>
+    <select name="enable" class="select select-sm" aria-label="调度开关"><option value="">全部调度状态</option><option value="enabled" {{if eq .Enable "enabled"}}selected{{end}}>已启用</option><option value="paused" {{if eq .Enable "paused"}}selected{{end}}>已暂停</option></select>
+    <select name="group" class="select select-sm" aria-label="限流分组"><option value="">全部限流分组</option>{{range .Groups}}<option value="{{.Name}}" {{if eq $.GroupFilter .Name}}selected{{end}}>{{.Name}}</option>{{end}}</select>
+    <button type="submit" class="btn btn-sm">{{icon "filter"}}筛选</button><button type="button" class="btn btn-sm btn-ghost" data-list-reset>重置</button>
+    <span class="app-refresh-state" data-refresh-state><span class="app-health-dot"></span>刚刚更新</span>
+  </form>
+  <div data-live-list>{{template "rules_live" .}}</div>
+</section>
+{{end}}
+
+{{define "rules_live"}}
+<div class="app-tabs" data-list-tabs role="group" aria-label="执行状态">
+  <button type="button" class="app-tab {{if eq .RuntimeFilter ""}}active{{end}}" data-list-status="" aria-pressed="{{eq .RuntimeFilter ""}}">全部 <span class="app-tab-count">{{index .Summary "all"}}</span></button>
+  <button type="button" class="app-tab {{if eq .RuntimeFilter "running"}}active{{end}}" data-list-status="running" aria-pressed="{{eq .RuntimeFilter "running"}}">正在执行 <span class="app-tab-count">{{index .Summary "running"}}</span></button>
+  <button type="button" class="app-tab {{if eq .RuntimeFilter "queued"}}active{{end}}" data-list-status="queued" aria-pressed="{{eq .RuntimeFilter "queued"}}">等待执行 <span class="app-tab-count">{{index .Summary "queued"}}</span></button>
+  <button type="button" class="app-tab {{if eq .RuntimeFilter "failed"}}active{{end}}" data-list-status="failed" aria-pressed="{{eq .RuntimeFilter "failed"}}">需要处理 <span class="app-tab-count">{{index .Summary "failed"}}</span></button>
+  <button type="button" class="app-tab {{if eq .RuntimeFilter "blocked"}}active{{end}}" data-list-status="blocked" aria-pressed="{{eq .RuntimeFilter "blocked"}}">条件阻塞 <span class="app-tab-count">{{index .Summary "blocked"}}</span></button>
+  <button type="button" class="app-tab {{if eq .RuntimeFilter "paused"}}active{{end}}" data-list-status="paused" aria-pressed="{{eq .RuntimeFilter "paused"}}">调度暂停 <span class="app-tab-count">{{index .Summary "paused"}}</span></button>
 </div>
-<script>
-(() => {
-  const enabled = document.getElementById('autoRefreshRules');
-  let updating = false;
-  async function refresh() {
-    if (!enabled.checked || updating || document.visibilityState !== 'visible' || document.activeElement?.closest('#rulesFilter')) return;
-    updating = true;
-    try {
-      const response = await fetch(location.href);
-      if (!response.ok) return;
-      const page = new DOMParser().parseFromString(await response.text(), 'text/html');
-      for (const id of ['rulesRows', 'rulesPagination']) {
-        const replacement = page.getElementById(id);
-        if (replacement) document.getElementById(id).replaceChildren(...replacement.childNodes);
-      }
-    } catch (_) {} finally { updating = false; }
-  }
-  setInterval(refresh, 15000);
-})();
-</script>
+<div class="app-table-wrap app-data-wrap">
+  <table class="table app-data-table"><thead><tr>
+    <th><button class="app-sort" data-list-sort="name" data-sort-direction="asc" type="button">规则 {{icon "sort"}}</button></th>
+    <th>同步路径</th><th>执行状态</th>
+    <th><button class="app-sort" data-list-sort="speed" data-sort-direction="desc" type="button">当前速度 {{icon "sort"}}</button></th>
+    <th class="cell-optional"><button class="app-sort" data-list-sort="scan" data-sort-direction="desc" type="button">最近扫描 {{icon "sort"}}</button></th><th>操作</th>
+  </tr></thead><tbody data-list-rows>
+  {{range .Rules}}<tr data-row-id="{{.Rule.ID}}">
+    <td class="cell-title"><a href="/rules/edit?id={{.Rule.ID}}" class="row-title">{{.Rule.ID}}</a><span class="app-subtitle">{{modeName .Rule.TransferMode}} · {{if .Rule.AtomicPublish}}整组发布{{else if .Rule.GroupByDirectory}}目录分组{{else}}自动分段{{end}}</span></td>
+    <td class="cell-path"><button class="app-copy-path" data-copy="{{sourcePath .Rule}}" data-copy-label="源路径" type="button" aria-label="复制 {{.Rule.ID}} 的源路径" title="{{sourcePath .Rule}}"><span class="app-path">{{sourcePath .Rule}}</span></button><button class="app-copy-path app-subtitle" data-copy="{{destinationPath .Rule}}" data-copy-label="目标路径" type="button" aria-label="复制 {{.Rule.ID}} 的目标路径" title="{{destinationPath .Rule}}"><span class="app-path">→ {{destinationPath .Rule}}</span></button></td>
+    <td class="cell-status"><span class="{{statusClass .Status}}">{{.StatusLabel}}</span>{{if gt .Activity.Running 0}}<span class="app-subtitle">{{.Activity.Running}} 个任务执行中</span>{{else if gt .Activity.Pending 0}}<span class="app-subtitle">{{.Activity.Pending}} 个任务等待</span>{{end}}{{if not .Rule.Enabled}}<span class="app-subtitle">调度已暂停</span>{{end}}{{if .Message}}<span class="app-subtitle app-wrap app-row-message" title="{{.Message}}">{{.Message}}</span>{{end}}</td>
+    <td class="cell-rate app-number">{{if gt .Speed 0.0}}{{humanSpeed .Speed}}{{else}}—{{end}}<span class="app-subtitle">24h · {{humanBytes .Usage24h}}</span></td>
+    <td class="cell-optional"><span title="{{ts .Runtime.ScanEndedAt}}">{{relativeTime .Runtime.ScanEndedAt}}</span><span class="app-subtitle">发现 {{.Runtime.Discovered}} · 可传 {{.Runtime.Eligible}}</span></td>
+    <td class="cell-actions"><div class="app-row-actions"><a class="btn btn-sm btn-ghost" href="/jobs?rule_id={{.Rule.ID}}" aria-label="查看 {{.Rule.ID}} 的任务">任务</a><details class="app-row-menu" data-row-menu><summary class="btn btn-sm btn-ghost btn-square" aria-label="{{.Rule.ID}} 更多操作">{{icon "more"}}</summary><div class="app-menu-list">
+      <a href="/rules/edit?id={{.Rule.ID}}" class="btn btn-sm btn-ghost">{{icon "edit"}}编辑规则</a>
+      <form method="post" action="/rules/toggle" data-ui-form><input name="id" value="{{.Rule.ID}}" type="hidden"><input name="enabled" value="{{if .Rule.Enabled}}0{{else}}1{{end}}" type="hidden"><input name="return_url" value="{{$.SelfURL}}" type="hidden"><button class="btn btn-sm btn-ghost" type="submit">{{if .Rule.Enabled}}{{icon "pause"}}暂停新任务{{else}}{{icon "play"}}启用调度{{end}}</button></form>
+      <form method="post" action="/rules/scan" data-ui-form><input name="id" value="{{.Rule.ID}}" type="hidden"><input name="return_url" value="{{$.SelfURL}}" type="hidden"><button class="btn btn-sm btn-ghost" type="submit">{{icon "scan"}}立即扫描</button></form>
+      <form method="post" action="/rules/retry_failed" data-ui-form><input name="id" value="{{.Rule.ID}}" type="hidden"><input name="return_url" value="{{$.SelfURL}}" type="hidden"><button class="btn btn-sm btn-ghost" type="submit">{{icon "refresh"}}重试失败内容</button></form>
+      <a href="/rules/edit?copy_from_id={{.Rule.ID}}" class="btn btn-sm btn-ghost">{{icon "copy"}}复制为新规则</a>
+      <form method="post" action="/rules/delete" data-ui-form data-confirm-title="删除规则“{{.Rule.ID}}”？" data-confirm-message="尚未执行的任务将取消，运行中的任务继续完成。历史任务和流量记录会保留。" data-confirm-label="删除规则"><input name="id" value="{{.Rule.ID}}" type="hidden"><input name="return_url" value="{{$.SelfURL}}" type="hidden"><button class="btn btn-sm btn-ghost text-error" type="submit">{{icon "close"}}删除规则</button></form>
+    </div></details></div></td>
+  </tr>{{else}}<tr data-row-id="empty"><td colspan="6"><div class="app-empty">{{icon "sync"}}<div class="app-empty-title">{{if .Total}}暂无当前页数据{{else}}暂无匹配的规则{{end}}</div><p class="app-empty-desc">调整筛选条件，或新建一条同步规则。</p><a href="/rules/edit" class="btn btn-sm btn-primary">{{icon "plus"}}新建规则</a></div></td></tr>{{end}}
+  </tbody></table>
+</div>
+{{template "list_pagination" .}}
 {{end}}

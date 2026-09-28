@@ -20,7 +20,7 @@ func (s *Server) jobRetryPost(c *gin.Context) {
 		c.String(http.StatusConflict, "重试失败：%v", err)
 		return
 	}
-	s.redirect(c, "/jobs/view?id="+job.JobID)
+	s.uiSuccess(c, "重试任务已排队，将复用已完成内容", "/jobs/view?id="+job.JobID)
 }
 func (s *Server) apiJobFiles(c *gin.Context) {
 	ctx := c.Request.Context()

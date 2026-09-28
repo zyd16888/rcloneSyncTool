@@ -1,25 +1,6 @@
 {{define "content"}}
-<div class="space-y-4" id="jobPage" data-job-id="{{.Job.JobID}}">
-  <div class="flex flex-wrap gap-3 justify-between items-center">
-    <div><h1 class="text-xl font-bold">任务详情</h1><div class="text-sm opacity-70">文件清单、执行阶段与最终结果</div></div>
-    <div class="flex gap-2"><a class="btn btn-sm btn-ghost" href="/jobs">任务列表</a>
-      <form id="terminateForm" method="post" action="/jobs/terminate" onsubmit="return confirm('停止该任务，未完成内容会保留以便重试。确定继续？');"><input type="hidden" name="id" value="{{.Job.JobID}}"><input type="hidden" name="next" value="/jobs/view?id={{.Job.JobID}}"><button class="btn btn-sm btn-error btn-outline" type="submit">停止任务</button></form>
-      <form id="retryForm" method="post" action="/jobs/retry"><input type="hidden" name="id" value="{{.Job.JobID}}"><button class="btn btn-sm btn-primary" type="submit">重试未完成内容</button></form>
-    </div>
-  </div>
-  <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-    <div class="card bg-base-100 border border-base-200"><div class="card-body p-5 space-y-2">
-      <div class="font-bold">基础信息</div><div class="text-sm break-all">任务：{{.Job.JobID}}</div><div class="text-sm">规则：{{.Job.RuleID}} · 模式：{{.Job.TransferMode}}</div>
-      <div class="flex gap-2 text-sm">状态：<span id="jobStatus" class="badge">{{.Job.Status}}</span>阶段：<span id="jobPhase">{{.Job.Phase}}</span></div>
-      <div class="text-sm">开始：<span id="jobStarted">{{ts .Job.StartedAt}}</span></div><div class="text-sm">结束：<span id="jobEnded">{{ts .Job.EndedAt}}</span></div>
-      <div class="text-xs opacity-70 break-all">{{if eq .Rule.SrcKind "local"}}{{.Rule.SrcLocalRoot}}{{else}}{{.Rule.SrcRemote}}:{{.Rule.SrcPath}}{{end}} → {{.Rule.DstRemote}}:{{.Rule.DstPath}}</div>
-      <div id="jobError" class="text-sm text-error break-all">{{.Job.Error}}</div>
-    </div></div>
-    <div class="card bg-base-100 border border-base-200"><div class="card-body p-5"><div class="font-bold">传输统计</div><div class="grid grid-cols-2 gap-4 text-sm mt-3"><div>已传输：<b id="bytes">-</b></div><div>速度：<b id="speed">-</b></div><div>文件完成：<b id="doneFiles">-</b></div><div>当前传输：<b id="transfers">-</b></div><div>失败文件：<b id="failedFiles">-</b></div><div>传输错误：<b id="errors">-</b></div></div></div></div>
-  </div>
-  <div class="card bg-base-100 border border-base-200"><div class="card-body p-5"><div class="font-bold">当前传输文件</div><div class="overflow-x-auto"><table class="table table-sm"><thead><tr><th>文件</th><th>进度</th><th>已传 / 总计</th><th>速度</th><th>ETA</th></tr></thead><tbody id="transfersBody"></tbody></table></div><div id="transfersHint" class="text-xs opacity-60">等待传输状态</div></div></div>
-  <div class="card bg-base-100 border border-base-200"><div class="card-body p-5"><div class="font-bold">本次任务文件清单</div><div class="overflow-x-auto"><table class="table table-sm"><thead><tr><th>文件</th><th>状态</th><th>大小</th><th>说明</th></tr></thead><tbody id="manifestBody"></tbody></table></div><button id="moreFiles" class="btn btn-sm btn-ghost" type="button" style="display:none">加载更多文件</button></div></div>
-  <div class="card bg-base-100 border border-base-200"><div class="card-body p-5"><div class="font-bold">任务日志</div><pre id="logBox" class="bg-neutral text-neutral-content rounded-xl p-3 text-xs leading-relaxed overflow-auto" style="max-height:360px"></pre></div></div>
+<div class="max-w-4xl mx-auto">
+  <div class="page-heading"><div><h1>任务详情</h1><p class="page-description">本次清单、执行阶段与最终结果</p></div><a class="btn btn-sm btn-ghost" href="/jobs">{{icon "arrow-left"}}返回任务列表</a></div>
+  <div class="app-form-panel">{{template "job_detail" .}}</div>
 </div>
-<script src="/static/job_view.js"></script>
 {{end}}

@@ -11,6 +11,8 @@ type JobHandle struct {
 	cmd        *exec.Cmd
 	cancel     context.CancelFunc
 	terminated atomic.Bool
+	progressMu sync.RWMutex
+	progress   TaskProgress
 }
 
 func (h *JobHandle) Terminated() bool { return h != nil && h.terminated.Load() }

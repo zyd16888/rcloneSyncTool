@@ -90,8 +90,8 @@ func (s *Server) settingsSavePost(c *gin.Context) {
 	}
 	if passwordChanged {
 		clearAuthCookie(c)
-		s.redirect(c, "/login?next=%2Fsettings")
+		s.uiSuccess(c, "设置已保存，请使用新密码重新登录", "/login?next=%2Fsettings")
 		return
 	}
-	s.redirect(c, "/settings")
+	s.uiSuccess(c, "系统设置已保存", "/settings")
 }

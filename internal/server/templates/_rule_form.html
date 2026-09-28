@@ -1,0 +1,58 @@
+{{define "source_fields"}}
+<div class="app-form-grid">
+  <label class="app-field">源类型<select name="src_kind" class="select" required><option value="remote" {{if eq .Rule.SrcKind "remote"}}selected{{end}}>远程目录</option><option value="local" {{if eq .Rule.SrcKind "local"}}selected{{end}}>本地目录</option></select></label>
+  <label class="app-field">传输方式<select name="transfer_mode" class="select"><option value="copy" {{if eq .Rule.TransferMode "copy"}}selected{{end}}>复制 · 保留源文件</option><option value="move" {{if eq .Rule.TransferMode "move"}}selected{{end}}>移动 · 成功后清理源文件</option></select></label>
+  <div data-source-kind="remote" class="app-field-wide app-form-grid">
+    <label class="app-field">源连接<input name="src_remote" class="input" list="remoteNames" value="{{.Rule.SrcRemote}}" placeholder="选择或填写 remote 名称"></label>
+    <label class="app-field">源目录<input name="src_path" class="input" value="{{.Rule.SrcPath}}" list="sourcePaths" data-remote-suggest="src_remote" placeholder="/"><span class="app-field-help">相对于源连接的根目录</span></label>
+  </div>
+  <div data-source-kind="local" class="app-field-wide">
+    <label class="app-field">本地源目录<input name="src_local_root" class="input" value="{{.Rule.SrcLocalRoot}}" list="localPaths" data-local-suggest placeholder="例如 /downloads/movies"><span class="app-field-help">{{if .Manual}}选择本次需要传输的目录或文件{{else}}选择影片集合目录，每部影片可放在独立子目录中{{end}}</span></label>
+    {{if not .Manual}}<label class="app-inline app-small mt-3"><input name="local_watch_enabled" value="1" type="checkbox" class="checkbox" {{if .Rule.LocalWatch}}checked{{end}}>监听本地目录变化，提前触发扫描</label>{{end}}
+  </div>
+  <label class="app-field">目标连接<input name="dst_remote" class="input" value="{{.Rule.DstRemote}}" list="remoteNames" required placeholder="选择或填写 remote 名称"></label>
+  <label class="app-field">目标目录<input name="dst_path" class="input" value="{{.Rule.DstPath}}" list="destinationPaths" data-remote-suggest="dst_remote" required placeholder="/media/movies"><span class="app-field-help">相对于目标连接的根目录</span></label>
+  {{if .Manual}}
+  <label class="app-field">源子目录（可选）<input name="source_subpath" class="input" placeholder="例如 Interstellar.2014"><span class="app-field-help">使用集合目录配置时，定位到本次影片</span></label>
+  <label class="app-field">目标子目录（可选）<input name="destination_subpath" class="input" placeholder="例如 Interstellar.2014"><span class="app-field-help">整目录发布时，目标应是本次影片的独立目录</span></label>
+  {{end}}
+</div>
+<datalist id="remoteNames">{{range .Remotes}}<option value="{{.}}">{{.}}</option>{{end}}</datalist><datalist id="sourcePaths"></datalist><datalist id="destinationPaths"></datalist><datalist id="localPaths"></datalist>
+{{end}}
+
+{{define "sync_policy_fields"}}
+<div class="app-toggle-row"><label for="groupDirectory">按影片目录同步<span class="app-subtitle">同一影片目录的分段、字幕和元数据一起传输</span></label><input id="groupDirectory" name="group_by_directory" value="1" type="checkbox" class="checkbox" {{if .Rule.GroupByDirectory}}checked{{end}}></div>
+<div class="app-toggle-row"><label for="atomicPublish">完成后整目录发布<span class="app-subtitle">先暂存并校验，完成后进入正式目录；支持 local 和 Google Drive</span></label><input id="atomicPublish" name="atomic_publish" value="1" type="checkbox" class="checkbox" {{if .Rule.AtomicPublish}}checked{{end}}></div>
+<div data-atomic-fields class="app-form-grid mt-5">
+  <label class="app-field app-field-wide">暂存目录<input name="staging_path" class="input" value="{{.Rule.StagingPath}}" placeholder="留空自动选择目标父目录下的暂存区"><span class="app-field-help">应位于刮削器扫描范围之外，并与正式目录分开</span></label>
+</div>
+<div class="app-form-grid mt-5">
+  {{if not .Manual}}
+  <label class="app-field">等待目录稳定<input name="stable_seconds" type="number" min="0" max="86400" value="{{.Rule.StableSeconds}}" class="input"><span class="app-field-help">秒 · 目录内容连续不变后开始</span></label>
+  <label class="app-field">上游完成标记（可选）<input name="ready_marker" value="{{.Rule.ReadyMarker}}" class="input" placeholder="例如 .ready"><span class="app-field-help">填写后，目录中出现标记才会入队</span></label>
+  <label class="app-field">扫描间隔<input name="scan_interval_sec" type="number" min="1" value="{{.Rule.ScanIntervalSec}}" class="input"><span class="app-field-help">秒 · 定期扫描启动前已有及后来新增的影片</span></label>
+  <label class="app-field">每批文件参考数量<input name="batch_size" type="number" min="1" value="{{.Rule.BatchSize}}" class="input"><span class="app-field-help">影片组会完整保留，不按数量拆分</span></label>
+  {{else}}<p class="app-field-help app-field-wide">手动任务立即准备本次清单，执行时会检查源文件和完整目录。</p>{{end}}
+  <label class="app-field">最小主影片大小<input name="min_file_size" value="{{if gt .Rule.MinFileSizeBytes 0}}{{.Rule.MinFileSizeBytes}}{{end}}" class="input" placeholder="例如 100M、1.5G 或 0"><span class="app-field-help">目录分组时用于识别主影片，配套文件随整组同步</span></label>
+  <label class="app-field">忽略扩展名<input name="ignore_extensions" value="{{.Rule.IgnoreExtensions}}" class="input" placeholder=".url .html .tmp"><span class="app-field-help">多个扩展名使用空格或逗号分隔</span></label>
+  {{if .Presets}}<label class="app-field app-field-wide">添加扩展名预设<select class="select" data-preset-select="ignore_extensions"><option value="">选择预设</option>{{range .Presets}}<option value="{{.Extensions}}">{{.Name}}</option>{{end}}</select></label>{{end}}
+</div>
+<div class="app-flow-summary">{{icon "shield"}}<span data-flow-summary>按本次同步策略执行</span></div>
+{{end}}
+
+{{define "advanced_rule_fields"}}
+<div class="app-form-grid">
+  <label class="app-field">限流分组<select name="limit_group" class="select"><option value="">使用独立限额</option>{{range .LimitGroups}}<option value="{{.Name}}" {{if eq .Name $.Rule.LimitGroup}}selected{{end}}>{{.Name}} · {{if gt .DailyLimitBytes 0}}{{humanBytes .DailyLimitBytes}} / 24h{{else}}不限{{end}}</option>{{end}}</select><span class="app-field-help">同组规则共享过去 24 小时配额</span></label>
+  <label class="app-field">独立流量限额<input name="daily_limit" value="{{if gt .Rule.DailyLimitBytes 0}}{{.Rule.DailyLimitBytes}}{{end}}" class="input" placeholder="例如 750G 或 0"><span class="app-field-help" data-limit-hint>过去 24 小时滚动限额，0 表示不限</span></label>
+  <label class="app-field">传输速度上限<input name="bwlimit" value="{{.Rule.Bwlimit}}" class="input" placeholder="例如 40M，留空使用系统设置"><span class="app-field-help">使用 rclone 的带宽格式，M 表示 MiB/s</span></label>
+  {{if not .Manual}}<label class="app-field">规则并发<input name="max_parallel_jobs" type="number" min="1" max="10000" value="{{.Rule.MaxParallelJobs}}" class="input"><span class="app-field-help">同时受系统总并发限制</span></label>{{end}}
+  <div class="app-field app-field-wide"><label class="app-inline"><input name="resume_enabled" value="1" type="checkbox" class="checkbox" {{if .Rule.ResumeEnabled}}checked{{end}}>启用续传相关选项</label><span class="app-field-help">重试会复用已完成内容；文件字节续传取决于后端能力</span></div>
+  <label class="app-field">临时文件后缀<input name="partial_suffix" value="{{.Rule.PartialSuffix}}" class="input" placeholder="可选"><span class="app-field-help">高级选项：partial-suffix</span></label>
+  <input name="partial_dir" value="{{.Rule.PartialDir}}" type="hidden">
+  <label class="app-field app-field-wide">自定义 rclone 参数<textarea name="rclone_extra_args" class="textarea min-h-24" data-draft-skip placeholder="可选">{{.Rule.RcloneExtraArgs}}</textarea><span class="app-field-help">支持引号；过滤参数用于准备清单，保存时检查冲突</span></label>
+</div>
+{{if not .Manual}}
+<div class="app-toggle-row mt-3"><label for="apiEnabled">开放给 API<span class="app-subtitle">允许外部系统引用这条规则提交任务</span></label><input id="apiEnabled" name="api_enabled" value="1" type="checkbox" class="checkbox" {{if .Rule.APIEnabled}}checked{{end}}></div>
+<div class="app-form-grid mt-4" data-api-fields><label class="app-field app-field-wide">API 允许的传输方式<input name="api_allowed_operations" value="{{.Rule.APIAllowedOperations}}" class="input" placeholder="copy,move"><span class="app-field-help">留空使用规则方式；可填写 copy、move，以逗号分隔</span></label></div>
+{{end}}
+{{end}}

@@ -1,0 +1,46 @@
+{{define "job_detail"}}
+<section class="app-detail" data-job-detail data-job-id="{{.View.ID}}">
+  <div class="app-detail-heading"><div><span class="app-subtitle" data-job-value="rule">{{.View.RuleLabel}}</span><h1 data-job-value="title">{{.View.Title}}</h1><div class="app-inline mt-2"><span data-job-status data-job-value="status" class="{{statusClass .View.Status}}">{{.View.StatusLabel}}</span><span class="app-small app-muted">{{modeName .View.Mode}}</span></div></div><button class="btn btn-ghost btn-sm" type="button" data-copy="{{.View.ID}}" data-copy-label="任务 ID" aria-label="复制任务 ID">{{icon "copy"}}</button></div>
+  <div class="app-steps" data-job-steps>{{range $i,$step:=.View.Steps}}<div class="app-step {{$step.State}}"><b>{{if eq $step.State "is-complete"}}✓{{else}}·{{end}}</b><span>{{$step.Name}}</span></div>{{end}}</div>
+  <div class="app-detail-progress">
+    <div class="app-inline justify-between"><span>影片进度</span><span class="app-number" data-job-value="percent">{{if .View.ProgressKnown}}{{printf "%.1f" .View.Percent}}%{{else}}—{{end}}</span></div>
+    <div class="app-progress {{if eq .View.Status "done"}}is-done{{end}}" data-job-progress role="progressbar" aria-label="影片进度" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{printf "%.1f" .View.Percent}}"><span style="width:{{printf "%.1f" .View.Percent}}%"></span></div>
+    <span class="app-subtitle app-number" data-job-value="ready">{{if .View.ProgressKnown}}{{humanBytes .View.ReadyBytes}} / {{humanBytes .View.PlannedBytes}}{{else}}正在确认清单{{end}}</span>
+  </div>
+  <div class="app-info-list">
+    <div class="app-info-row" data-job-current><span>当前速度</span><span data-job-value="speed" class="app-number">{{if gt .View.Speed 0.0}}{{humanSpeed .View.Speed}}{{else}}—{{end}}</span></div>
+    <div class="app-info-row" data-job-average {{if not .View.Terminal}}hidden{{end}}><span>平均速度</span><span data-job-value="average" class="app-number">{{humanSpeed .View.AverageSpeed}}</span></div>
+    <div class="app-info-row"><span>实际传输量</span><span data-job-value="actual" class="app-number">{{humanBytes .View.ActualBytes}}</span></div>
+    <div class="app-info-row"><span>复用已完成内容</span><span data-job-value="reused" class="app-number">{{if gt .View.ReusedBytes 0}}{{humanBytes .View.ReusedBytes}}{{else}}—{{end}}</span></div>
+    <div class="app-info-row"><span>预计剩余时间</span><span data-job-value="eta">—</span></div>
+  </div>
+  <div class="alert alert-error mt-4 app-wrap" data-job-error role="alert" {{if not .View.Error}}hidden{{end}}>{{.View.Error}}</div>
+  <div class="alert alert-info mt-4" data-job-retry-pending {{if not .View.RetryPending}}hidden{{end}}>已有重试任务排队或执行中。</div>
+  <div class="app-tabs mt-6" role="tablist" aria-label="任务详情">
+    <button class="app-tab active" id="taskFiles-{{.View.ID}}" type="button" data-detail-tab="files" role="tab" aria-selected="true" aria-controls="taskFilesPanel-{{.View.ID}}">文件清单</button>
+    <button class="app-tab" id="taskLogs-{{.View.ID}}" type="button" data-detail-tab="logs" role="tab" aria-selected="false" aria-controls="taskLogsPanel-{{.View.ID}}">日志</button>
+    <button class="app-tab" id="taskInfo-{{.View.ID}}" type="button" data-detail-tab="info" role="tab" aria-selected="false" aria-controls="taskInfoPanel-{{.View.ID}}">任务信息</button>
+  </div>
+  <div id="taskFilesPanel-{{.View.ID}}" data-detail-panel="files" role="tabpanel" aria-labelledby="taskFiles-{{.View.ID}}">
+    <div class="app-inline justify-between app-muted app-small mb-2"><span data-job-value="manifest-count">正在读取文件清单</span><span>已验证 <span data-job-value="file-count">{{.View.FilesDone}} / {{.View.FilesTotal}}</span></span></div>
+    <div class="app-file-list" data-job-files></div><button class="btn btn-sm btn-ghost mt-3" type="button" data-more-files hidden>加载更多文件</button>
+  </div>
+  <div id="taskLogsPanel-{{.View.ID}}" data-detail-panel="logs" role="tabpanel" aria-labelledby="taskLogs-{{.View.ID}}" hidden>{{template "log_panel" .}}</div>
+  <div id="taskInfoPanel-{{.View.ID}}" data-detail-panel="info" role="tabpanel" aria-labelledby="taskInfo-{{.View.ID}}" hidden>
+    <div class="app-info-row"><span>任务 ID</span><span class="app-mono">{{.View.ID}}</span></div>
+    <div class="app-info-row"><span>来源</span><span data-job-value="origin">{{if eq .View.Origin "api"}}API 提交{{else if eq .View.Origin "manual"}}手动运行{{else}}规则调度{{end}}</span></div>
+    <div class="app-info-row"><span>源目录</span><span class="app-mono app-wrap" data-job-value="source">{{.View.Source}}</span></div>
+    <div class="app-info-row"><span>目标目录</span><span class="app-mono app-wrap" data-job-value="destination">{{.View.Destination}}</span></div>
+    <div class="app-info-row"><span>传输方式</span><span data-job-value="mode">{{modeName .View.Mode}}</span></div>
+    <div class="app-info-row"><span>提交时间</span><span data-job-value="created">{{ts .View.CreatedAt}}</span></div>
+    <div class="app-info-row"><span>开始时间</span><span data-job-value="started">{{ts .View.StartedAt}}</span></div>
+    <div class="app-info-row"><span>结束时间</span><span data-job-value="ended">{{ts .View.EndedAt}}</span></div>
+    <div class="app-info-row"><span>原任务</span><span class="app-mono" data-job-value="retry">{{if .View.RetryOf}}{{.View.RetryOf}}{{else}}—{{end}}</span></div>
+    <div class="app-info-row"><span>暂存路径</span><span class="app-mono app-wrap" data-job-value="stage">{{if .View.StagePath}}{{.View.StagePath}}{{else}}—{{end}}</span></div>
+  </div>
+  <footer class="app-detail-footer"><span class="app-muted app-small mr-auto" data-job-value="updated">状态正在更新</span>
+    <form method="post" action="/jobs/terminate" data-ui-form data-job-stop {{if not .View.CanStop}}hidden{{end}} data-confirm-title="停止“{{.View.Title}}”？" data-confirm-message="当前传输会停止，已完成的结果会保留。未完成内容可通过重试继续。" data-confirm-label="停止任务"><input name="id" value="{{.View.ID}}" type="hidden"><input name="next" value="/jobs/view?id={{.View.ID}}" type="hidden"><button class="btn btn-sm btn-error" type="submit">{{icon "stop"}}停止任务</button></form>
+    <form method="post" action="/jobs/retry" data-ui-form data-job-retry {{if not .View.CanRetry}}hidden{{end}}><input name="id" value="{{.View.ID}}" type="hidden"><button class="btn btn-sm btn-primary" type="submit">{{icon "refresh"}}重试未完成内容</button></form>
+  </footer>
+</section>
+{{end}}

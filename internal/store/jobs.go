@@ -178,11 +178,15 @@ func buildJobsWhere(f JobFilter) (string, []any) {
 		args = append(args, strings.TrimSpace(f.TransferMode))
 	}
 	if strings.TrimSpace(f.Query) != "" {
-		b.WriteString(" AND (job_id LIKE ? OR error LIKE ?)\n")
+		b.WriteString(" AND (job_id LIKE ? OR rule_id LIKE ? OR error LIKE ? OR group_key LIKE ? OR " + jobSourceSubpathSQL() + " LIKE ? OR EXISTS(SELECT 1 FROM transfer_job_files f WHERE f.job_id=jobs.job_id AND f.path LIKE ?))\n")
 		kw := "%" + strings.TrimSpace(f.Query) + "%"
-		args = append(args, kw, kw)
+		args = append(args, kw, kw, kw, kw, kw, kw)
 	}
 	return "\n" + strings.TrimSpace(b.String()) + "\n", args
+}
+
+func jobSourceSubpathSQL() string {
+	return "CASE WHEN json_valid(request_snapshot) THEN json_extract(request_snapshot,'$.source_subpath') ELSE '' END"
 }
 
 func (s *Store) GetJob(ctx context.Context, id string) (Job, bool, error) {

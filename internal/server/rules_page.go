@@ -19,80 +19,16 @@ type ruleListRow struct {
 	Activity store.RuleActivity
 }
 
-func (s *Server) rulesList(c *gin.Context) {
-	ctx := c.Request.Context()
-	rules, err := s.st.ListRules(ctx)
-	if err != nil {
-		c.String(http.StatusInternalServerError, "读取规则失败：%v", err)
-		return
-	}
-	counts, err := s.st.RuleCountsAll(ctx)
-	if err != nil {
-		c.String(http.StatusInternalServerError, "读取文件状态失败：%v", err)
-		return
-	}
-	activities, _ := s.st.RuleActivities(ctx)
-	runtimes, _ := s.st.RuleRuntimes(ctx)
-	q := strings.TrimSpace(c.Query("q"))
-	enable := c.Query("enable")
-	runtime := c.Query("runtime")
-	group := c.Query("group")
-	var rows []ruleListRow
-	for _, r := range rules {
-		count, activity, run := counts[r.ID], activities[r.ID], runtimes[r.ID]
-		if enable == "enabled" && !r.Enabled || enable == "paused" && r.Enabled {
-			continue
-		}
-		if group != "" && r.LimitGroup != group {
-			continue
-		}
-		if q != "" && !strings.Contains(strings.ToLower(r.ID+" "+r.SrcRemote+":"+r.SrcPath+" "+r.SrcLocalRoot+" "+r.DstRemote+":"+r.DstPath), strings.ToLower(q)) {
-			continue
-		}
-		switch runtime {
-		case "running":
-			if activity.Running == 0 {
-				continue
-			}
-		case "queued":
-			if activity.Pending == 0 && count.Queued == 0 {
-				continue
-			}
-		case "failed":
-			if count.Failed == 0 && run.ScanError == "" {
-				continue
-			}
-		case "blocked":
-			if run.BlockReason == "" {
-				continue
-			}
-		case "idle":
-			if activity.Running > 0 || activity.Pending > 0 || count.Queued > 0 {
-				continue
-			}
-		}
-		usage, _ := s.st.RuleUsageSince(ctx, r.ID, now24h())
-		rows = append(rows, ruleListRow{Rule: r, Counts: count, Activity: activity, Runtime: run, Usage24h: usage})
-	}
-	total := len(rows)
-	page := maxInt(1, atoiDefault(c.Query("page"), 1))
-	size := normalizePageSize(c.Query("page_size"), 20)
-	pages := maxInt(1, (total+size-1)/size)
-	page = minInt(page, pages)
-	start := minInt(total, (page-1)*size)
-	end := minInt(total, start+size)
-	rows = rows[start:end]
-	pageURL := func(p int) string {
-		v := c.Request.URL.Query()
-		v.Set("page", fmt.Sprint(p))
-		v.Set("page_size", fmt.Sprint(size))
-		return "/rules?" + v.Encode()
-	}
-	groups, _ := s.st.ListLimitGroups(ctx)
-	s.render(c, "rules", map[string]any{"Active": "rules", "Rules": rows, "Groups": groups, "Q": q, "Enable": enable, "RuntimeFilter": runtime, "GroupFilter": group, "SelfURL": c.Request.URL.RequestURI(), "Page": page, "PageSize": size, "Total": total, "TotalPages": pages, "HasPrev": page > 1, "HasNext": page < pages, "PrevURL": pageURL(maxInt(1, page-1)), "NextURL": pageURL(minInt(pages, page+1)), "Notice": c.Query("notice"), "IsError": c.Query("error") == "1"})
-}
 func now24h() time.Time { return time.Now().Add(-24 * time.Hour) }
 func (s *Server) ruleFeedback(c *gin.Context, message string, isError bool) {
+	if wantsUIJSON(c) {
+		if isError {
+			uiError(c, http.StatusBadRequest, "", message)
+		} else {
+			s.uiSuccess(c, message, safeNext(c.PostForm("return_url"), "/rules"))
+		}
+		return
+	}
 	next := safeNext(c.PostForm("return_url"), "/rules")
 	u, err := url.Parse(next)
 	if err != nil {
@@ -155,17 +91,17 @@ func (s *Server) ruleSavePost(c *gin.Context) {
 	ctx := c.Request.Context()
 	minSize, err := parseSizeBytes(c.PostForm("min_file_size"))
 	if err != nil {
-		c.String(http.StatusBadRequest, "最小文件大小格式错误：%v（示例：10M / 1.5G / 0 / 留空）", err)
+		uiError(c, http.StatusBadRequest, "min_file_size", "最小文件大小格式错误，请使用 10M、1.5G、0 或留空")
 		return
 	}
 	dailyLimit, err := parseSizeBytes(c.PostForm("daily_limit"))
 	if err != nil {
-		c.String(http.StatusBadRequest, "每日流量限制格式错误：%v（示例：750G / 0 / 留空）", err)
+		uiError(c, http.StatusBadRequest, "daily_limit", "流量限制格式错误，请使用 750G、0 或留空")
 		return
 	}
 	if strings.TrimSpace(c.PostForm("rclone_extra_args")) != "" {
 		if err := daemon.ValidateRcloneArgs(c.PostForm("rclone_extra_args")); err != nil {
-			c.String(http.StatusBadRequest, err.Error())
+			uiError(c, http.StatusBadRequest, "rclone_extra_args", err.Error())
 			return
 		}
 	}
