@@ -117,7 +117,7 @@
     if(!form.reportValidity())return;
     pending.add(form);const submitter=event.submitter;
     App.closeMenus();
-    if(confirmTitle&&!await App.confirm({title:confirmTitle,message:form.dataset.confirmMessage||'',label:form.dataset.confirmLabel||'确认'})){pending.delete(form);return;}
+    if(confirmTitle&&!await App.confirm({title:confirmTitle,message:form.dataset.confirmMessage||'',label:form.dataset.confirmLabel||'确认',danger:form.dataset.confirmDanger!=='0'})){pending.delete(form);return;}
     if(!enhanced){form.dataset.confirmed='1';pending.delete(form);form.requestSubmit(submitter);return;}
     const buttons=Array.from(form.querySelectorAll('button[type="submit"]'));
     const states=buttons.map(b=>({button:b,disabled:b.disabled,html:b.innerHTML}));

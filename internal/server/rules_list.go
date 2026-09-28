@@ -10,11 +10,13 @@ import (
 
 type ruleDisplayRow struct {
 	ruleListRow
-	Speed       float64
-	Phase       string
-	Status      string
-	StatusLabel string
-	Message     string
+	Speed          float64
+	Phase          string
+	Status         string
+	StatusLabel    string
+	Message        string
+	NeedsAttention bool
+	IgnoredErrors  bool
 }
 
 func (s *Server) rulesList(c *gin.Context) {
@@ -44,6 +46,11 @@ func (s *Server) rulesList(c *gin.Context) {
 		uiError(c, 500, "", "读取传输状态失败")
 		return
 	}
+	failures, err := s.st.RuleFileFailures(ctx)
+	if err != nil {
+		uiError(c, 500, "", "读取失败提示状态失败")
+		return
+	}
 	usage, err := s.st.RuleUsageTotals(ctx, now24h())
 	if err != nil {
 		uiError(c, 500, "", "读取流量失败")
@@ -66,7 +73,9 @@ func (s *Server) rulesList(c *gin.Context) {
 			continue
 		}
 		count, a, run, tr := counts[r.ID], activities[r.ID], runtimes[r.ID], transfers[r.ID]
-		failed := count.Failed > 0 || run.ScanError != "" || tr.Failed > 0
+		fileFailure := failures[r.ID]
+		failed := fileFailure.Open > 0 || run.ScanError != "" && !run.ScanErrorIgnored || tr.Failed > 0
+		ignored := fileFailure.Ignored > 0 || tr.IgnoredFailures > 0 || run.ScanError != "" && run.ScanErrorIgnored
 		blocked := run.BlockReason != "" || tr.Blocked > 0
 		queued := a.Pending > 0 || count.Queued > 0
 		idle := a.Running == 0 && !queued
@@ -94,6 +103,7 @@ func (s *Server) rulesList(c *gin.Context) {
 			continue
 		}
 		row := ruleDisplayRow{ruleListRow: ruleListRow{Rule: r, Counts: count, Usage24h: usage[r.ID], Runtime: run, Activity: a}, Speed: tr.Speed, Phase: tr.Phase, Status: "idle", StatusLabel: "空闲"}
+		row.NeedsAttention, row.IgnoredErrors = failed, ignored
 		switch {
 		case a.Running > 0:
 			row.Status = "running"
@@ -114,13 +124,19 @@ func (s *Server) rulesList(c *gin.Context) {
 			row.Status = "pending"
 			row.StatusLabel = "等待执行"
 		}
-		row.Message = run.ScanError
-		if row.Message == "" {
-			row.Message = run.BlockMessage
+		if !run.ScanErrorIgnored {
+			row.Message = run.ScanError
 		}
 		if row.Message == "" {
 			row.Message = tr.LatestError
 		}
+		if row.Message == "" {
+			row.Message = fileFailure.Message
+		}
+		if row.Message == "" {
+			row.Message = run.BlockMessage
+		}
+		row.Message = redactLogLine(row.Message)
 		rows = append(rows, row)
 	}
 	sortBy := c.DefaultQuery("sort", "name")
@@ -172,6 +188,12 @@ func (s *Server) rulesList(c *gin.Context) {
 	page := min(pages, max(1, atoiDefault(c.Query("page"), 1)))
 	start := min(total, (page-1)*size)
 	rows = rows[start:min(total, start+size)]
+	var attentionIDs []string
+	for _, row := range rows {
+		if row.NeedsAttention {
+			attentionIDs = append(attentionIDs, row.Rule.ID)
+		}
+	}
 	groups, _ := s.st.ListLimitGroups(ctx)
 	link := func(p int) string {
 		return updateQuery(cleanPageURL(c), map[string]string{"page": strconv.Itoa(p), "page_size": strconv.Itoa(size)})
@@ -181,5 +203,6 @@ func (s *Server) rulesList(c *gin.Context) {
 		"Summary": summary, "Sort": sortBy, "Direction": direction, "SelfURL": cleanPageURL(c), "Page": page, "PageSize": size,
 		"Total": total, "TotalPages": pages, "HasPrev": page > 1, "HasNext": page < pages, "PrevURL": link(max(1, page-1)), "NextURL": link(min(pages, page+1)),
 		"Notice": c.Query("notice"), "IsError": c.Query("error") == "1",
+		"AttentionRuleIDs": attentionIDs,
 	})
 }

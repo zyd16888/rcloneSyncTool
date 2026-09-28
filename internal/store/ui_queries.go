@@ -168,18 +168,18 @@ func (s *Store) JobStatusCounts(ctx context.Context, filter JobFilter) (map[stri
 }
 
 type RuleTransferActivity struct {
-	Speed       float64
-	Phase       string
-	Blocked     int
-	Failed      int
-	LatestError string
+	Speed           float64
+	Phase           string
+	Blocked         int
+	Failed          int
+	IgnoredFailures int
+	LatestError     string
 }
 
 func (s *Store) RuleTransferActivities(ctx context.Context, freshSince time.Time) (map[string]RuleTransferActivity, error) {
-	rows, err := s.db.QueryContext(ctx, "SELECT rule_id,status,phase,error,block_reason,"+
+	rows, err := s.db.QueryContext(ctx, "SELECT rule_id,status,phase,error,block_reason,error_ignored,"+
 		"CASE WHEN status='running' AND phase IN ('copying','') THEN COALESCE((SELECT speed FROM job_metrics m WHERE m.job_id=j.job_id AND ts>=? ORDER BY ts DESC LIMIT 1),0) ELSE 0 END "+
-		"FROM jobs j WHERE status IN ('running','pending','blocked') OR (status IN ('failed','terminated') AND NOT EXISTS(SELECT 1 FROM jobs child WHERE child.retry_of=j.job_id) AND "+
-		"(origin<>'scheduler' OR EXISTS(SELECT 1 FROM transfer_job_files tf JOIN files f ON f.rule_id=j.rule_id AND f.path=COALESCE(NULLIF(tf.source_path,''),tf.path) WHERE tf.job_id=j.job_id AND f.state='failed'))) ORDER BY created_at,job_id", freshSince.UnixMilli())
+		"FROM jobs j WHERE status IN ('running','pending','blocked') OR ("+currentRuleTaskFailureSQL()+") ORDER BY created_at,job_id", freshSince.UnixMilli())
 	if err != nil {
 		return nil, err
 	}
@@ -188,7 +188,8 @@ func (s *Store) RuleTransferActivities(ctx context.Context, freshSince time.Time
 	for rows.Next() {
 		var id, status, phase, message, reason string
 		var speed float64
-		if err := rows.Scan(&id, &status, &phase, &message, &reason, &speed); err != nil {
+		var ignored bool
+		if err := rows.Scan(&id, &status, &phase, &message, &reason, &ignored, &speed); err != nil {
 			return nil, err
 		}
 		a := out[id]
@@ -202,9 +203,13 @@ func (s *Store) RuleTransferActivities(ctx context.Context, freshSince time.Time
 				a.LatestError = message
 			}
 		}
-		if status == "failed" || status == "terminated" {
-			a.Failed++
-			a.LatestError = message
+		if status == "failed" {
+			if ignored {
+				a.IgnoredFailures++
+			} else {
+				a.Failed++
+				a.LatestError = message
+			}
 		}
 		out[id] = a
 	}

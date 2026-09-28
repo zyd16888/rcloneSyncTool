@@ -3,7 +3,7 @@
 <div class="app-stat-grid mb-6">
   <a href="/jobs?status=running" class="app-stat"><div class="app-stat-label">当前传输速度</div><div class="app-stat-value" id="statSpeed">{{humanSpeed .TotalSpeed}}</div><div class="app-subtitle"><span id="statRunning">{{index .Summary "running"}}</span> 个任务执行中</div></a>
   <a href="/jobs?status=blocked" class="app-stat"><div class="app-stat-label">等待与排队</div><div class="app-stat-value"><span id="statBlocked">{{index .Summary "blocked"}}</span><span class="app-stat-unit"> 个等待条件恢复</span></div><div class="app-subtitle"><span id="statPending">{{index .Summary "pending"}}</span> 个任务排队</div></a>
-  <a href="/jobs?status=failed" class="app-stat"><div class="app-stat-label">需要处理</div><div class="app-stat-value"><span id="statFailed">{{index .Summary "failed"}}</span><span class="app-stat-unit"> 个失败任务</span></div><div class="app-subtitle">查看失败原因和重试入口 {{icon "chevron-right"}}</div></a>
+  <a href="/jobs?status=failed" class="app-stat"><div class="app-stat-label">需要处理</div><div class="app-stat-value"><span id="statFailed">{{index .Summary "attention"}}</span><span class="app-stat-unit"> 个未忽略的失败任务</span></div><div class="app-subtitle">查看失败记录和重试入口 {{icon "chevron-right"}}</div></a>
 </div>
 <div data-dashboard-live>{{template "dashboard_live" .}}</div>
 <details class="app-form-panel" data-dashboard-chart><summary class="app-inline justify-between"><span class="font-semibold">传输速度曲线</span>{{icon "chevron-down"}}</summary>

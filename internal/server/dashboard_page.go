@@ -19,6 +19,12 @@ func (s *Server) dashboard(c *gin.Context) {
 		uiError(c, 500, "", "读取概览失败")
 		return
 	}
+	attention, err := s.st.JobAttentionCount(ctx)
+	if err != nil {
+		uiError(c, 500, "", "读取失败提示失败")
+		return
+	}
+	counts["attention"] = attention
 	all, _ := s.st.UIJobs(ctx, store.JobFilter{}, 10, 0, "created", "desc", s.metricFreshSince(ctx))
 	views, err := s.jobViews(ctx, all)
 	if err != nil {

@@ -124,6 +124,8 @@ func New(st *store.Store, supervisor *daemon.Supervisor, logDir string, appLogPa
 	r.POST("/rules/toggle", s.ruleTogglePost)
 	r.POST("/rules/scan", s.ruleScanPost)
 	r.POST("/rules/retry_failed", s.ruleRetryFailedPost)
+	r.POST("/rules/ignore_errors", s.ruleIgnoreErrorsPost)
+	r.POST("/rules/restore_errors", s.ruleRestoreErrorsPost)
 
 	r.GET("/limit_groups", s.limitGroupsList)
 	r.POST("/limit_groups/save", s.limitGroupsSavePost)
@@ -499,7 +501,17 @@ func (s *Server) apiStatsNow(c *gin.Context) {
 	todayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 	bytesToday, _ := s.st.StatsBytesSince(ctx, todayStart)
 	bytes24h, _ := s.st.StatsBytesSince(ctx, now.Add(-24*time.Hour))
-	statusCounts, _ := s.st.JobStatusCounts(ctx, store.JobFilter{})
+	statusCounts, err := s.st.JobStatusCounts(ctx, store.JobFilter{})
+	if err != nil {
+		c.Status(http.StatusInternalServerError)
+		return
+	}
+	attention, err := s.st.JobAttentionCount(ctx)
+	if err != nil {
+		c.Status(http.StatusInternalServerError)
+		return
+	}
+	statusCounts["attention"] = attention
 
 	c.Writer.Header().Set("Content-Type", "application/json; charset=utf-8")
 	_ = json.NewEncoder(c.Writer).Encode(map[string]any{

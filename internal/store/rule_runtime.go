@@ -6,23 +6,24 @@ import (
 )
 
 type RuleRuntime struct {
-	ScanStartedAt time.Time
-	ScanEndedAt   time.Time
-	ScanError     string
-	Discovered    int
-	Eligible      int
-	Filtered      int
-	Enqueued      int64
-	BlockReason   string
-	BlockMessage  string
+	ScanStartedAt    time.Time
+	ScanEndedAt      time.Time
+	ScanError        string
+	ScanErrorIgnored bool
+	Discovered       int
+	Eligible         int
+	Filtered         int
+	Enqueued         int64
+	BlockReason      string
+	BlockMessage     string
 }
 
 func (s *Store) StartRuleScan(ctx context.Context, id string) error {
-	_, err := s.db.ExecContext(ctx, `INSERT INTO rule_runtime(rule_id,scan_started_at) VALUES(?,?) ON CONFLICT(rule_id) DO UPDATE SET scan_started_at=excluded.scan_started_at,scan_error=''`, id, nowUnix())
+	_, err := s.db.ExecContext(ctx, `INSERT INTO rule_runtime(rule_id,scan_started_at) VALUES(?,?) ON CONFLICT(rule_id) DO UPDATE SET scan_started_at=excluded.scan_started_at,scan_error='',scan_error_ignored=0`, id, nowUnix())
 	return err
 }
 func (s *Store) FinishRuleScan(ctx context.Context, id string, stats ScanStats, message string) error {
-	_, err := s.db.ExecContext(ctx, `UPDATE rule_runtime SET scan_ended_at=?,scan_error=?,discovered=?,eligible=?,filtered=?,enqueued=? WHERE rule_id=?`, nowUnix(), message, stats.Discovered, stats.Eligible, stats.Filtered, stats.Enqueued, id)
+	_, err := s.db.ExecContext(ctx, `UPDATE rule_runtime SET scan_ended_at=?,scan_error=?,scan_error_ignored=0,discovered=?,eligible=?,filtered=?,enqueued=? WHERE rule_id=?`, nowUnix(), message, stats.Discovered, stats.Eligible, stats.Filtered, stats.Enqueued, id)
 	return err
 }
 func (s *Store) SetRuleBlock(ctx context.Context, id, reason, message string) error {
@@ -30,7 +31,7 @@ func (s *Store) SetRuleBlock(ctx context.Context, id, reason, message string) er
 	return err
 }
 func (s *Store) RuleRuntimes(ctx context.Context) (map[string]RuleRuntime, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT rule_id,scan_started_at,scan_ended_at,scan_error,discovered,eligible,filtered,enqueued,block_reason,block_message FROM rule_runtime`)
+	rows, err := s.db.QueryContext(ctx, `SELECT rule_id,scan_started_at,scan_ended_at,scan_error,scan_error_ignored,discovered,eligible,filtered,enqueued,block_reason,block_message FROM rule_runtime`)
 	if err != nil {
 		return nil, err
 	}
@@ -40,7 +41,7 @@ func (s *Store) RuleRuntimes(ctx context.Context) (map[string]RuleRuntime, error
 		var id string
 		var r RuleRuntime
 		var started, ended int64
-		if err := rows.Scan(&id, &started, &ended, &r.ScanError, &r.Discovered, &r.Eligible, &r.Filtered, &r.Enqueued, &r.BlockReason, &r.BlockMessage); err != nil {
+		if err := rows.Scan(&id, &started, &ended, &r.ScanError, &r.ScanErrorIgnored, &r.Discovered, &r.Eligible, &r.Filtered, &r.Enqueued, &r.BlockReason, &r.BlockMessage); err != nil {
 			return nil, err
 		}
 		if started > 0 {

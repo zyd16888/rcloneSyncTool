@@ -190,7 +190,8 @@ func (s *Store) MarkJobFiles(ctx context.Context, jobID, state string, errMsg st
 UPDATE files
 SET state=?,
     last_error=CASE WHEN ?='failed' THEN ? ELSE '' END,
-    fail_count=CASE WHEN ?='failed' THEN fail_count+1 ELSE fail_count END
+    fail_count=CASE WHEN ?='failed' THEN fail_count+1 ELSE fail_count END,
+    error_ignored=0
 WHERE job_id=?
 `, state, state, errMsg, state, jobID)
 	return err
@@ -238,7 +239,7 @@ WHERE job_id=? AND state='transferring'
 	case "failed":
 		if _, err := tx.ExecContext(ctx, `
 UPDATE files
-SET state='failed', last_error=?, fail_count=fail_count+1
+SET state='failed', last_error=?, fail_count=fail_count+1,error_ignored=0
 WHERE job_id=? AND state='transferring'
 `, errMsg, jobID); err != nil {
 			return err
@@ -309,7 +310,7 @@ WHERE job_id=?
 func (s *Store) UpdateJobFailed(ctx context.Context, jobID, errMsg string, bytesDone int64, avgSpeed float64) error {
 	_, err := s.db.ExecContext(ctx, `
 UPDATE jobs
-SET status='failed', ended_at=?, error=?, bytes_done=?, avg_speed=?
+SET status='failed', ended_at=?, error=?, error_ignored=0, bytes_done=?, avg_speed=?
 WHERE job_id=?
 `, nowUnix(), errMsg, bytesDone, avgSpeed, jobID)
 	return err

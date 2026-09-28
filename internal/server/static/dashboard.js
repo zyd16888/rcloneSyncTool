@@ -16,7 +16,7 @@
       const {data}=await App.request('/api/stats/now?rule_id='+encodeURIComponent(rule?.value||''),{signal:abort.signal});
       const text=(id,value)=>{const el=document.getElementById(id);if(el)el.textContent=value;};
       text('statSpeed',App.speed(data.globalSpeedTotal));text('statRunning',data.globalRunningJobs);text('statToday',App.bytes(data.bytesToday));text('stat24h',App.bytes(data.bytes24h));
-      if(data.statusCounts){text('statBlocked',data.statusCounts.blocked||0);text('statPending',data.statusCounts.pending||0);text('statFailed',data.statusCounts.failed||0);}
+      if(data.statusCounts){text('statBlocked',data.statusCounts.blocked||0);text('statPending',data.statusCounts.pending||0);text('statFailed',data.statusCounts.attention||0);}
       points.push({x:data.ts,y:Math.max(0,data.speedTotal)});const cutoff=Date.now()-Number(windowSize.value)*1000;while(points.length&&points[0].x<cutoff)points.shift();draw();
       if(Date.now()-lastSnapshot>=5000&&!document.querySelector('dialog[open]')){
         const {data:snapshot}=await App.request('/?partial=1',{signal:abort.signal});

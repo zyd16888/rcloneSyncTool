@@ -191,7 +191,8 @@ func (s *Server) ruleScanPost(c *gin.Context) {
 func (s *Server) ruleRetryFailedPost(c *gin.Context) {
 	ctx := c.Request.Context()
 	id := c.PostForm("id")
-	if _, ok, err := s.st.GetRule(ctx, id); err != nil || !ok {
+	rule, ok, err := s.st.GetRule(ctx, id)
+	if err != nil || !ok {
 		s.ruleFeedback(c, "规则不存在", true)
 		return
 	}
@@ -201,9 +202,12 @@ func (s *Server) ruleRetryFailedPost(c *gin.Context) {
 		return
 	}
 	jobs := 0
+	unretryable := 0
 	for _, task := range tasks {
 		if _, err := daemon.RetryTask(ctx, s.st, task, newID(), ""); err == nil {
 			jobs++
+		} else {
+			unretryable++
 		}
 	}
 	n, err := s.st.RetryFailed(ctx, id, 10000)
@@ -214,5 +218,16 @@ func (s *Server) ruleRetryFailedPost(c *gin.Context) {
 	if s.supervisor != nil {
 		s.supervisor.TriggerScan(id)
 	}
-	s.ruleFeedback(c, fmt.Sprintf("已排队 %d 个重试任务、恢复 %d 个失败文件；暂停规则需启用后执行", jobs, n), false)
+	if jobs == 0 && n == 0 {
+		s.ruleFeedback(c, "没有可重试的当前内容；可先扫描检查源目录，或忽略当前错误提示", true)
+		return
+	}
+	message := fmt.Sprintf("已排队 %d 个重试任务、恢复 %d 个失败文件", jobs, n)
+	if unretryable > 0 {
+		message += fmt.Sprintf("；另有 %d 个历史任务无法直接重试，可查看详情或忽略提示", unretryable)
+	}
+	if !rule.Enabled {
+		message += "；暂停规则需启用后执行"
+	}
+	s.ruleFeedback(c, message, false)
 }

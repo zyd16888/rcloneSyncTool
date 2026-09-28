@@ -182,13 +182,14 @@ func (s *Store) CompleteTask(ctx context.Context, jobID, status string, bytes in
 	}
 	if _, err := tx.ExecContext(ctx, `UPDATE files SET
  state=CASE WHEN EXISTS(SELECT 1 FROM transfer_job_files tf WHERE tf.job_id=? AND COALESCE(NULLIF(tf.source_path,''),tf.path)=files.path AND tf.state='done') THEN 'done' ELSE 'failed' END,
- last_error=?,fail_count=fail_count+CASE WHEN ?='failed' THEN 1 ELSE 0 END,job_id=NULL WHERE job_id=?`, jobID, message, status, jobID); err != nil {
+ last_error=?,error_ignored=CASE WHEN ?='terminated' THEN error_ignored ELSE 0 END,
+ fail_count=fail_count+CASE WHEN ?='failed' THEN 1 ELSE 0 END,job_id=NULL WHERE job_id=?`, jobID, message, status, status, jobID); err != nil {
 		return err
 	}
 	if _, err := tx.ExecContext(ctx, `UPDATE files SET last_error='' WHERE rule_id=(SELECT rule_id FROM jobs WHERE job_id=?) AND state='done'`, jobID); err != nil {
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, `UPDATE jobs SET status=?,ended_at=?,bytes_done=MAX(bytes_done,?),avg_speed=?,error=?,result_snapshot=?,reserved_bytes=0,block_reason='',updated_at=? WHERE job_id=? AND status IN ('running','pending','blocked')`, status, nowUnix(), bytes, speed, message, string(encoded), nowUnix(), jobID); err != nil {
+	if _, err := tx.ExecContext(ctx, `UPDATE jobs SET status=?,ended_at=?,bytes_done=MAX(bytes_done,?),avg_speed=?,error=?,error_ignored=0,result_snapshot=?,reserved_bytes=0,block_reason='',updated_at=? WHERE job_id=? AND status IN ('running','pending','blocked')`, status, nowUnix(), bytes, speed, message, string(encoded), nowUnix(), jobID); err != nil {
 		return err
 	}
 	return tx.Commit()

@@ -14,6 +14,7 @@ func (s *Store) migrateTaskLifecycle(ctx context.Context) error {
 		"files": {
 			{"group_key", "TEXT NOT NULL DEFAULT ''"},
 			{"source_present", "INTEGER NOT NULL DEFAULT 1"},
+			{"error_ignored", "INTEGER NOT NULL DEFAULT 0"},
 		},
 		"jobs": {
 			{"reserved_bytes", "INTEGER NOT NULL DEFAULT 0"},
@@ -24,6 +25,7 @@ func (s *Store) migrateTaskLifecycle(ctx context.Context) error {
 			{"retry_of", "TEXT NOT NULL DEFAULT ''"},
 			{"queue_next_at", "INTEGER NOT NULL DEFAULT 0"},
 			{"prepared", "INTEGER NOT NULL DEFAULT 0"},
+			{"error_ignored", "INTEGER NOT NULL DEFAULT 0"},
 		},
 		"transfer_job_files": {
 			{"mod_time", "TEXT NOT NULL DEFAULT ''"},
@@ -48,6 +50,7 @@ CREATE TABLE IF NOT EXISTS file_groups (
 CREATE TABLE IF NOT EXISTS rule_runtime (
  rule_id TEXT PRIMARY KEY, scan_started_at INTEGER NOT NULL DEFAULT 0,
  scan_ended_at INTEGER NOT NULL DEFAULT 0, scan_error TEXT NOT NULL DEFAULT '',
+ scan_error_ignored INTEGER NOT NULL DEFAULT 0,
  discovered INTEGER NOT NULL DEFAULT 0, eligible INTEGER NOT NULL DEFAULT 0,
  filtered INTEGER NOT NULL DEFAULT 0, enqueued INTEGER NOT NULL DEFAULT 0,
  block_reason TEXT NOT NULL DEFAULT '', block_message TEXT NOT NULL DEFAULT '',
@@ -66,5 +69,8 @@ CREATE INDEX IF NOT EXISTS usage_window_idx ON transfer_usage(ts, rule_id, quota
 UPDATE jobs SET quota_group=COALESCE((SELECT limit_group FROM rules WHERE id=rule_id),'') WHERE quota_group IS NULL;
 UPDATE jobs SET origin='manual' WHERE origin='scheduler' AND rule_id LIKE 'manual_%';
 `)
-	return err
+	if err != nil {
+		return err
+	}
+	return s.ensureColumn(ctx, "rule_runtime", "scan_error_ignored", "INTEGER NOT NULL DEFAULT 0")
 }

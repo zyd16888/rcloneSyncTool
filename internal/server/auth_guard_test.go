@@ -18,7 +18,7 @@ func TestUnauthenticatedManagementRequestsDoNotMutate(t *testing.T) {
 	for _, test := range []struct {
 		path   string
 		values url.Values
-	}{{"/rules/delete", url.Values{"id": {"protected"}}}, {"/settings/save", url.Values{"global_max_jobs": {"99"}}}, {"/api-access/tokens/create", url.Values{"name": {"unauthorized"}}}} {
+	}{{"/rules/delete", url.Values{"id": {"protected"}}}, {"/rules/ignore_errors", url.Values{"id": {"protected"}}}, {"/rules/restore_errors", url.Values{"id": {"protected"}}}, {"/settings/save", url.Values{"global_max_jobs": {"99"}}}, {"/api-access/tokens/create", url.Values{"name": {"unauthorized"}}}} {
 		req := httptest.NewRequest(http.MethodPost, test.path, strings.NewReader(test.values.Encode()))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		rec := httptest.NewRecorder()

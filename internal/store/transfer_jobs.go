@@ -300,7 +300,7 @@ func (s *Store) FinishTransferJob(
 	_, err := s.db.ExecContext(ctx, `
 UPDATE jobs
 SET status=?, block_reason='', ended_at=strftime('%s','now'), bytes_done=?, avg_speed=?,
-    error=?, result_snapshot=?, updated_at=?
+    error=?, error_ignored=0, result_snapshot=?, updated_at=?
 WHERE job_id=?
 `, status, bytesDone, avgSpeed, errMsg, encoded, nowUnix(), jobID)
 	return err
