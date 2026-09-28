@@ -1,91 +1,30 @@
 package daemon
 
 import (
+	"115togd/internal/store"
 	"context"
 	"log"
-
-	"115togd/internal/store"
 )
 
 func RecoverDanglingRuns(ctx context.Context, st *store.Store) error {
-	// After restart we don't know whether previous rclone processes are still running,
-	// so we mark them as failed and re-queue transferring files.
-	type row struct {
-		JobID   string
-		LogPath string
-	}
-	var running []row
-
-	rows, err := st.DB().QueryContext(ctx, `
-SELECT job_id, log_path
-FROM jobs
-WHERE status='running'
-`)
-	if err != nil {
+	// Jobs with frozen requests retain their phase and staging directory. They
+	// resume through the same durable queue used for their first execution.
+	if _, err := st.DB().ExecContext(ctx, `UPDATE jobs SET status='pending',reserved_bytes=0,rc_port=0,queue_next_at=0,error='daemon restarted; waiting to resume' WHERE status='running' AND request_snapshot<>''`); err != nil {
 		return err
 	}
-	for rows.Next() {
-		var r row
-		if err := rows.Scan(&r.JobID, &r.LogPath); err != nil {
-			_ = rows.Close()
-			return err
-		}
-		running = append(running, r)
-	}
-	if err := rows.Close(); err != nil {
+	// Pre-upgrade tasks have no immutable manifest and cannot be replayed.
+	if _, err := st.DB().ExecContext(ctx, `UPDATE jobs SET status='failed',ended_at=strftime('%s','now'),reserved_bytes=0,error='daemon restarted; retry source files' WHERE status='running' AND request_snapshot=''`); err != nil {
 		return err
 	}
-
-	_, err = st.DB().ExecContext(ctx, `
-UPDATE jobs
-SET status='failed',
-    ended_at=strftime('%s','now'),
-    error=CASE WHEN error='' THEN 'daemon restarted' ELSE error END
-WHERE status='running'
-`)
-	if err != nil {
+	if _, err := st.DB().ExecContext(ctx, `UPDATE files SET state='queued' WHERE state='transferring' AND EXISTS(SELECT 1 FROM jobs WHERE job_id=files.job_id AND status IN ('pending','blocked'))`); err != nil {
 		return err
 	}
-
-	for _, j := range running {
-		doneSet, _ := transferredPathsFromLog(j.LogPath)
-		var donePaths []string
-		if len(doneSet) > 0 {
-			frows, err := st.DB().QueryContext(ctx, `
-SELECT path
-FROM files
-WHERE job_id=? AND state='transferring'
-`, j.JobID)
-			if err != nil {
-				return err
-			}
-			for frows.Next() {
-				var p string
-				if err := frows.Scan(&p); err != nil {
-					_ = frows.Close()
-					return err
-				}
-				if _, ok := doneSet[p]; ok {
-					donePaths = append(donePaths, p)
-				}
-			}
-			if err := frows.Close(); err != nil {
-				return err
-			}
-		}
-		_ = st.FinalizeJobFiles(ctx, j.JobID, donePaths, "queued", "")
-		_ = st.ClearJobOnDone(ctx, j.JobID)
-	}
-
-	// Safety net: any remaining transferring rows without a running job record.
-	if _, err := st.DB().ExecContext(ctx, `
-UPDATE files
-SET state='queued', job_id=NULL
-WHERE state='transferring'
-`); err != nil {
+	if _, err := st.DB().ExecContext(ctx, `UPDATE files SET state='new',job_id=NULL WHERE state='transferring' AND NOT EXISTS(SELECT 1 FROM jobs WHERE job_id=files.job_id AND status IN ('pending','blocked','running'))`); err != nil {
 		return err
 	}
-
-	log.Printf("recovered: marked running jobs failed and re-queued transferring files")
+	if err := st.RepairFileBindings(ctx); err != nil {
+		return err
+	}
+	log.Printf("recovered: resumable tasks queued; obsolete file bindings repaired")
 	return nil
 }

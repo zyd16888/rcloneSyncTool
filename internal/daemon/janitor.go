@@ -1,86 +1,83 @@
 package daemon
 
 import (
+	"115togd/internal/store"
 	"context"
 	"log"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
-
-	"115togd/internal/store"
 )
 
 func StartLogJanitor(ctx context.Context, st *store.Store) {
 	run := func() {
-		rs, err := st.RuntimeSettings(ctx)
+		settings, err := st.RuntimeSettings(ctx)
 		if err != nil {
-			log.Printf("janitor: load settings: %v", err)
+			log.Printf("janitor settings: %v", err)
 			return
 		}
-		days := rs.LogRetentionDays
-		if days <= 0 {
-			return
+		if settings.LogRetentionDays > 0 {
+			if err := cleanCompletedJobLogs(ctx, st, settings.LogDir, time.Now().Add(-time.Duration(settings.LogRetentionDays)*24*time.Hour)); err != nil {
+				log.Printf("janitor logs: %v", err)
+			}
 		}
-		cutoff := time.Now().Add(-time.Duration(days) * 24 * time.Hour)
-		cleanOldJobLogs(rs.LogDir, cutoff)
+		cutoff := time.Now().Add(-30 * 24 * time.Hour).UnixMilli()
+		_, _ = st.DB().ExecContext(ctx, `DELETE FROM job_metrics WHERE ts<? AND EXISTS(SELECT 1 FROM jobs WHERE job_id=job_metrics.job_id AND status IN ('done','failed','terminated'))`, cutoff)
+		_, _ = st.DB().ExecContext(ctx, `DELETE FROM transfer_usage WHERE ts<? AND EXISTS(SELECT 1 FROM jobs WHERE job_id=transfer_usage.job_id AND status IN ('done','failed','terminated') AND ended_at<?)`, cutoff, time.Now().Add(-30*24*time.Hour).Unix())
 	}
-
 	run()
-	t := time.NewTicker(1 * time.Hour)
-	defer t.Stop()
+	ticker := time.NewTicker(time.Hour)
+	defer ticker.Stop()
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-t.C:
+		case <-ticker.C:
 			run()
 		}
 	}
 }
-
-func cleanOldJobLogs(logDir string, cutoff time.Time) {
-	if strings.TrimSpace(logDir) == "" {
-		return
+func cleanCompletedJobLogs(ctx context.Context, st *store.Store, logDir string, cutoff time.Time) error {
+	rows, err := st.DB().QueryContext(ctx, `SELECT job_id,rule_id,log_path FROM jobs WHERE status IN ('done','failed','terminated') AND ended_at>0 AND ended_at<?`, cutoff.Unix())
+	if err != nil {
+		return err
 	}
-	baseDir := filepath.Dir(logDir)
-	_ = filepath.WalkDir(logDir, func(p string, d os.DirEntry, err error) error {
-		if err != nil {
-			return nil
+	type artifact struct{ id, rule, path string }
+	var artifacts []artifact
+	for rows.Next() {
+		var a artifact
+		if err := rows.Scan(&a.id, &a.rule, &a.path); err != nil {
+			rows.Close()
+			return err
 		}
-		if d.IsDir() {
-			return nil
+		artifacts = append(artifacts, a)
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return err
+	}
+	rows.Close()
+	for _, a := range artifacts {
+		if !safeArtifactComponent(a.id) || !safeArtifactComponent(a.rule) {
+			continue
 		}
-		if !strings.HasSuffix(strings.ToLower(d.Name()), ".log") {
-			return nil
+		expected := filepath.Join(logDir, a.rule, a.id+".log")
+		absoluteExpected, _ := filepath.Abs(expected)
+		absoluteRecorded, _ := filepath.Abs(a.path)
+		if absoluteExpected != absoluteRecorded {
+			continue
 		}
-		fi, err := os.Stat(p)
-		if err != nil {
-			return nil
+		if err := os.Remove(expected); err != nil && !os.IsNotExist(err) {
+			return err
 		}
-		if !fi.ModTime().Before(cutoff) {
-			return nil
+		dir := filepath.Join(filepath.Dir(logDir), "jobs", a.rule, a.id)
+		if err := os.RemoveAll(dir); err != nil {
+			return err
 		}
-
-		rel, err := filepath.Rel(logDir, p)
-		if err != nil {
-			_ = os.Remove(p)
-			return nil
-		}
-		parts := strings.Split(rel, string(filepath.Separator))
-		if len(parts) >= 2 {
-			ruleID := parts[0]
-			jobID := strings.TrimSuffix(parts[len(parts)-1], ".log")
-			if ruleID != "" && jobID != "" {
-				_ = os.Remove(p)
-				_ = os.RemoveAll(filepath.Join(baseDir, "jobs", ruleID, jobID))
-				_ = os.Remove(filepath.Join(logDir, ruleID))
-				_ = os.Remove(filepath.Join(baseDir, "jobs", ruleID))
-				return nil
-			}
-		}
-		_ = os.Remove(p)
-		return nil
-	})
+	}
+	return nil
 }
-
+func safeArtifactComponent(value string) bool {
+	return value != "" && value != "." && value != ".." && !strings.ContainsAny(value, "/\\:\x00")
+}

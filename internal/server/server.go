@@ -9,7 +9,6 @@ import (
 	"log"
 	"net/http"
 	"net/url"
-	"os"
 	"path"
 	"path/filepath"
 	"strconv"
@@ -18,7 +17,6 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"golang.org/x/crypto/bcrypt"
 
 	"115togd/internal/daemon"
 	"115togd/internal/store"
@@ -138,6 +136,8 @@ func New(st *store.Store, supervisor *daemon.Supervisor, logDir string, appLogPa
 	r.GET("/jobs", s.jobsList)
 	r.GET("/jobs/view", s.jobView)
 	r.POST("/jobs/terminate", s.jobTerminatePost)
+	r.POST("/jobs/retry", s.jobRetryPost)
+	r.GET("/api/job/files", s.apiJobFiles)
 	r.GET("/api/job", s.apiJob)
 	r.GET("/api/job/log/stream", s.apiJobLogStream)
 	r.GET("/api/job/transfers", s.apiJobTransfers)
@@ -314,70 +314,6 @@ func (s *Server) remotesList(c *gin.Context) {
 	})
 }
 
-func (s *Server) rulesList(c *gin.Context) {
-	ctx := c.Request.Context()
-	rules, _ := s.st.ListRules(ctx)
-	type ruleRow struct {
-		Rule     store.Rule
-		Counts   store.FileStateCounts
-		Usage24h int64
-	}
-
-	var rows []ruleRow
-	for _, rule := range rules {
-		counts, _ := s.st.RuleFileCounts(ctx, rule.ID)
-		usage, _ := s.st.RuleUsageSince(ctx, rule.ID, time.Now().Add(-24*time.Hour))
-		rows = append(rows, ruleRow{Rule: rule, Counts: counts, Usage24h: usage})
-	}
-	s.render(c, "rules", map[string]any{
-		"Active": "rules",
-		"Rules":  rows,
-	})
-}
-
-func (s *Server) ruleEditGet(c *gin.Context) {
-	ctx := c.Request.Context()
-	id := strings.TrimSpace(c.Query("id"))
-	copyFromID := strings.TrimSpace(c.Query("copy_from_id"))
-
-	var rule store.Rule
-	if id != "" {
-		if got, ok, _ := s.st.GetRule(ctx, id); ok {
-			rule = got
-		}
-	} else if copyFromID != "" {
-		if got, ok, _ := s.st.GetRule(ctx, copyFromID); ok {
-			rule = got
-			rule.ID = ""         // Force new ID
-			rule.Enabled = false // Default to disabled for safety
-		}
-	}
-
-	if rule.ID == "" && copyFromID == "" { // Only apply defaults if not copying
-		rule.Enabled = true
-		rule.SrcKind = "remote"
-		rule.LocalWatch = true
-		rule.TransferMode = "copy"
-		rule.MaxParallelJobs = 1
-		rule.ScanIntervalSec = 15
-		rule.StableSeconds = 60
-		rule.BatchSize = 100
-	}
-	remotes, err := s.listRcloneRemotes(ctx)
-	rules, _ := s.st.ListRules(ctx)
-	limitGroups, _ := s.st.ListLimitGroups(ctx)
-	presets, _ := s.st.ListExtensionPresets(ctx)
-	s.render(c, "rule_edit", map[string]any{
-		"Active":      "rules",
-		"Rule":        rule,
-		"Remotes":     remotes,
-		"Rules":       rules,
-		"LimitGroups": limitGroups,
-		"Presets":     presets,
-		"Error":       errString(err),
-	})
-}
-
 func (s *Server) limitGroupsList(c *gin.Context) {
 	ctx := c.Request.Context()
 	groups, _ := s.st.ListLimitGroups(ctx)
@@ -506,7 +442,7 @@ func (s *Server) manualStartPost(c *gin.Context) {
 	}
 
 	if strings.TrimSpace(c.PostForm("rclone_extra_args")) != "" {
-		if _, err := daemon.ParseRcloneArgs(c.PostForm("rclone_extra_args")); err != nil {
+		if err := daemon.ValidateRcloneArgs(c.PostForm("rclone_extra_args")); err != nil {
 			c.String(http.StatusBadRequest, err.Error())
 			return
 		}
@@ -549,120 +485,22 @@ func (s *Server) manualStartPost(c *gin.Context) {
 	}
 	logPath := filepath.Join(settings.LogDir, rule.ID, jobID+".log")
 
-	j := store.Job{
-		JobID:        jobID,
-		RuleID:       rule.ID,
-		TransferMode: rule.TransferMode,
-		StartedAt:    time.Now(),
-		LogPath:      logPath,
-	}
-	if err := s.st.CreateJobRowPending(ctx, j); err != nil {
-		c.String(http.StatusInternalServerError, "create job: %v", err)
+	frozen, _, err := s.st.GetRule(ctx, rule.ID)
+	if err != nil {
+		c.String(http.StatusInternalServerError, "load rule: %v", err)
 		return
 	}
-
-	baseDir := filepath.Dir(settings.LogDir)
-	jobDir := filepath.Join(baseDir, "jobs", rule.ID, jobID)
-	_ = os.MkdirAll(jobDir, 0o755)
-	_ = os.MkdirAll(filepath.Dir(logPath), 0o755)
-
-	s.supervisor.StartManualJob(rule, jobID, logPath)
+	request, err := daemon.EncodeTransferSpec(daemon.TransferSpec{Operation: frozen.TransferMode, RuleSnapshot: &frozen})
+	if err != nil {
+		c.String(http.StatusInternalServerError, "encode task: %v", err)
+		return
+	}
+	job := store.TransferJob{JobID: jobID, RuleID: frozen.ID, Origin: store.OriginManual, TransferMode: frozen.TransferMode, RequestJSON: request, LogPath: logPath, QuotaGroup: frozen.LimitGroup}
+	if err := s.st.CreateTransferJob(ctx, job, nil); err != nil {
+		c.String(http.StatusInternalServerError, "create task: %v", err)
+		return
+	}
 	s.redirect(c, "/jobs/view?id="+jobID)
-}
-
-func (s *Server) ruleSavePost(c *gin.Context) {
-	ctx := c.Request.Context()
-	minSize, err := parseSizeBytes(c.PostForm("min_file_size"))
-	if err != nil {
-		c.String(http.StatusBadRequest, "最小文件大小格式错误：%v（示例：10M / 1.5G / 0 / 留空）", err)
-		return
-	}
-	dailyLimit, err := parseSizeBytes(c.PostForm("daily_limit"))
-	if err != nil {
-		c.String(http.StatusBadRequest, "每日流量限制格式错误：%v（示例：750G / 0 / 留空）", err)
-		return
-	}
-	if strings.TrimSpace(c.PostForm("rclone_extra_args")) != "" {
-		if _, err := daemon.ParseRcloneArgs(c.PostForm("rclone_extra_args")); err != nil {
-			c.String(http.StatusBadRequest, err.Error())
-			return
-		}
-	}
-	rule := store.Rule{
-		ID:                   c.PostForm("id"),
-		LimitGroup:           strings.TrimSpace(c.PostForm("limit_group")),
-		SrcKind:              c.PostForm("src_kind"),
-		SrcRemote:            c.PostForm("src_remote"),
-		SrcPath:              c.PostForm("src_path"),
-		SrcLocalRoot:         c.PostForm("src_local_root"),
-		LocalWatch:           store.ParseEnabled(c.PostForm("local_watch_enabled")),
-		DstRemote:            c.PostForm("dst_remote"),
-		DstPath:              c.PostForm("dst_path"),
-		TransferMode:         c.PostForm("transfer_mode"),
-		RcloneExtraArgs:      c.PostForm("rclone_extra_args"),
-		ResumeEnabled:        store.ParseEnabled(c.PostForm("resume_enabled")),
-		PartialDir:           strings.TrimSpace(c.PostForm("partial_dir")),
-		PartialSuffix:        strings.TrimSpace(c.PostForm("partial_suffix")),
-		IgnoreExtensions:     c.PostForm("ignore_extensions"),
-		Bwlimit:              c.PostForm("bwlimit"),
-		DailyLimitBytes:      dailyLimit,
-		MinFileSizeBytes:     minSize,
-		APIEnabled:           store.ParseEnabled(c.PostForm("api_enabled")),
-		APIAllowedOperations: strings.TrimSpace(c.PostForm("api_allowed_operations")),
-		MaxParallelJobs:      atoiDefault(c.PostForm("max_parallel_jobs"), 1),
-		ScanIntervalSec:      atoiDefault(c.PostForm("scan_interval_sec"), 15),
-		StableSeconds:        atoiDefault(c.PostForm("stable_seconds"), 60),
-		BatchSize:            atoiDefault(c.PostForm("batch_size"), 100),
-		Enabled:              store.ParseEnabled(c.PostForm("enabled")),
-	}
-	if err := s.st.UpsertRule(ctx, rule); err != nil {
-		c.String(http.StatusBadRequest, err.Error())
-		return
-	}
-	if !rule.Enabled && s.supervisor != nil {
-		s.supervisor.StopRule(rule.ID)
-	}
-	s.redirect(c, "/rules")
-}
-
-func (s *Server) ruleDeletePost(c *gin.Context) {
-	ctx := c.Request.Context()
-	id := c.PostForm("id")
-	_ = s.st.DeleteRule(ctx, id)
-	s.redirect(c, "/rules")
-}
-
-func (s *Server) ruleTogglePost(c *gin.Context) {
-	ctx := c.Request.Context()
-	id := c.PostForm("id")
-	enabled := store.ParseEnabled(c.PostForm("enabled"))
-	rule, ok, err := s.st.GetRule(ctx, id)
-	if err != nil || !ok {
-		c.String(http.StatusNotFound, "rule not found")
-		return
-	}
-	rule.Enabled = enabled
-	if err := s.st.UpsertRule(ctx, rule); err != nil {
-		c.String(http.StatusBadRequest, err.Error())
-		return
-	}
-	if !enabled && s.supervisor != nil {
-		s.supervisor.StopRule(id)
-	}
-	s.redirect(c, "/rules")
-}
-
-func (s *Server) ruleScanPost(c *gin.Context) {
-	id := c.PostForm("id")
-	_ = s.supervisor.TriggerScan(id)
-	s.redirect(c, "/rules")
-}
-
-func (s *Server) ruleRetryFailedPost(c *gin.Context) {
-	ctx := c.Request.Context()
-	id := c.PostForm("id")
-	_, _ = s.st.RetryFailed(ctx, id, 10000)
-	s.redirect(c, "/rules")
 }
 
 func (s *Server) jobsList(c *gin.Context) {
@@ -732,7 +570,7 @@ func normalizePageSize(s string, def int) int {
 
 func normalizeJobStatus(s string) string {
 	switch strings.TrimSpace(strings.ToLower(s)) {
-	case "running", "done", "failed", "terminated":
+	case "pending", "blocked", "running", "done", "failed", "terminated":
 		return strings.TrimSpace(strings.ToLower(s))
 	default:
 		return ""
@@ -793,6 +631,19 @@ func (s *Server) jobView(c *gin.Context) {
 		return
 	}
 	rule, _, _ := s.st.GetRule(ctx, job.RuleID)
+	if transfer, found, e := s.st.GetTransferJob(ctx, id); e == nil && found && transfer.RequestJSON != "" {
+		if spec, e := daemon.DecodeStoredTransferSpec(transfer.RequestJSON); e == nil && spec.RuleSnapshot != nil {
+			rule = *spec.RuleSnapshot
+			if rule.SrcKind == "local" {
+				rule.SrcLocalRoot = filepath.Join(rule.SrcLocalRoot, filepath.FromSlash(spec.SourceSubpath))
+			} else if spec.SourceSubpath != "" {
+				rule.SrcPath = strings.TrimSuffix(rule.SrcPath, "/") + "/" + spec.SourceSubpath
+			}
+			if spec.DestinationSubpath != "" {
+				rule.DstPath = strings.TrimSuffix(rule.DstPath, "/") + "/" + spec.DestinationSubpath
+			}
+		}
+	}
 	s.render(c, "job_view", map[string]any{
 		"Active": "jobs",
 		"Job":    job,
@@ -809,14 +660,21 @@ func (s *Server) apiJob(c *gin.Context) {
 		return
 	}
 	metric, hasM, _ := s.st.LatestJobMetric(ctx, job.JobID)
-	doneCount, doneErr := s.jobDoneCount(job.JobID, job.LogPath)
+	counts, countErr := s.st.TransferJobFileCounts(ctx, job.JobID)
+	doneCount := counts.Done
+	doneErr := errString(countErr)
+	if counts.Total == 0 {
+		doneCount, doneErr = s.jobDoneCount(job.JobID, job.LogPath)
+	}
 	c.Writer.Header().Set("Content-Type", "application/json; charset=utf-8")
 	_ = json.NewEncoder(c.Writer).Encode(map[string]any{
-		"job":       job,
-		"metric":    metric,
-		"hasMetric": hasM,
-		"doneCount": doneCount,
-		"doneError": doneErr,
+		"job":         job,
+		"metric":      metric,
+		"hasMetric":   hasM,
+		"doneCount":   doneCount,
+		"doneError":   doneErr,
+		"filesTotal":  counts.Total,
+		"filesFailed": counts.Failed,
 	})
 }
 
@@ -824,6 +682,7 @@ func (s *Server) apiStatsNow(c *gin.Context) {
 	ctx := c.Request.Context()
 	ruleID := strings.TrimSpace(c.Query("rule_id"))
 	sum, err := s.st.RealtimeSummary(ctx, ruleID)
+	globalSummary, _ := s.st.RealtimeSummary(ctx, "")
 	if err != nil {
 		c.Status(http.StatusInternalServerError)
 		return
@@ -835,13 +694,15 @@ func (s *Server) apiStatsNow(c *gin.Context) {
 
 	c.Writer.Header().Set("Content-Type", "application/json; charset=utf-8")
 	_ = json.NewEncoder(c.Writer).Encode(map[string]any{
-		"ts":          time.Now().UnixMilli(),
-		"ruleID":      ruleID,
-		"bytesTotal":  sum.BytesTotal,
-		"speedTotal":  sum.SpeedTotal,
-		"runningJobs": sum.RunningJobs,
-		"bytesToday":  bytesToday,
-		"bytes24h":    bytes24h,
+		"ts":                time.Now().UnixMilli(),
+		"ruleID":            ruleID,
+		"bytesTotal":        sum.BytesTotal,
+		"speedTotal":        sum.SpeedTotal,
+		"runningJobs":       sum.RunningJobs,
+		"globalSpeedTotal":  globalSummary.SpeedTotal,
+		"globalRunningJobs": globalSummary.RunningJobs,
+		"bytesToday":        bytesToday,
+		"bytes24h":          bytes24h,
 	})
 }
 
@@ -881,72 +742,6 @@ func (s *Server) apiJobTransfers(c *gin.Context) {
 	})
 }
 
-func (s *Server) settingsGet(c *gin.Context) {
-	ctx := c.Request.Context()
-	all, _ := s.st.ListSettings(ctx)
-	m := map[string]string{}
-	for _, kv := range all {
-		m[kv.Key] = kv.Value
-	}
-	s.render(c, "settings", map[string]any{
-		"Active": "settings",
-		"S":      m,
-		"LogDir": s.logDir,
-	})
-}
-
-func (s *Server) settingsSavePost(c *gin.Context) {
-	ctx := c.Request.Context()
-	passwordChanged := false
-	if p := strings.TrimSpace(c.PostForm("ui_password")); p != "" {
-		if p != strings.TrimSpace(c.PostForm("ui_password2")) {
-			c.String(http.StatusBadRequest, "两次输入的密码不一致")
-			return
-		}
-		hash, err := bcrypt.GenerateFromPassword([]byte(p), bcrypt.DefaultCost)
-		if err != nil {
-			c.String(http.StatusInternalServerError, "密码加密失败：%v", err)
-			return
-		}
-		if err := s.st.SetSetting(ctx, authPasswordHashKey, string(hash)); err != nil {
-			c.String(http.StatusInternalServerError, "保存密码失败：%v", err)
-			return
-		}
-		passwordChanged = true
-	}
-
-	for _, key := range []string{
-		"rclone_config_path",
-		"log_retention_days",
-		"global_max_jobs",
-		"rc_port_start",
-		"rc_port_end",
-		"rclone_transfers",
-		"rclone_checkers",
-		"rclone_buffer_size",
-		"rclone_drive_chunk_size",
-		"rclone_bwlimit",
-		"metrics_interval_ms",
-		"scheduler_tick_ms",
-	} {
-		v := strings.TrimSpace(c.PostForm(key))
-		if key == "rclone_config_path" {
-			_ = s.st.SetSetting(ctx, key, v)
-			continue
-		}
-		if v == "" {
-			continue
-		}
-		_ = s.st.SetSetting(ctx, key, v)
-	}
-	if passwordChanged {
-		clearAuthCookie(c)
-		s.redirect(c, "/login?next=%2Fsettings")
-		return
-	}
-	s.redirect(c, "/settings")
-}
-
 func (s *Server) jobTerminatePost(c *gin.Context) {
 	ctx := c.Request.Context()
 	id := strings.TrimSpace(c.PostForm("id"))
@@ -959,18 +754,16 @@ func (s *Server) jobTerminatePost(c *gin.Context) {
 		c.Status(http.StatusNotFound)
 		return
 	}
-	if job.Status != "running" {
-		c.String(http.StatusConflict, "job is not running")
-		return
-	}
-	if !s.supervisor.TerminateJob(id) {
+	if job.Status == "pending" || job.Status == "blocked" {
+		if cancelled, err := s.st.CancelWaitingTask(ctx, id); err != nil || !cancelled {
+			c.String(http.StatusConflict, "任务状态已变化，请刷新后重试")
+			return
+		}
+	} else if job.Status != "running" || !s.supervisor.TerminateJob(id) {
 		c.String(http.StatusConflict, "terminate failed: job not found in registry")
 		return
 	}
-	next := strings.TrimSpace(c.PostForm("next"))
-	if next == "" || !strings.HasPrefix(next, "/") {
-		next = "/jobs"
-	}
+	next := safeNext(c.PostForm("next"), "/jobs")
 	s.redirect(c, next)
 }
 

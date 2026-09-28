@@ -122,6 +122,10 @@ func (s *Server) createTransferJob(c *gin.Context) {
 		return
 	}
 	jobID := newID()
+	groupKey := ""
+	if rule.GroupByDirectory && spec.SourceSubpath != "" {
+		groupKey = "dir:" + spec.SourceSubpath
+	}
 	job := store.TransferJob{
 		JobID:          jobID,
 		RuleID:         rule.ID,
@@ -132,11 +136,17 @@ func (s *Server) createTransferJob(c *gin.Context) {
 		RequestJSON:    encodedSpec,
 		CallbackURL:    callbackURL,
 		LogPath:        filepath.Join(settings.LogDir, rule.ID, jobID+".log"),
+		QuotaGroup:     rule.LimitGroup,
+		GroupKey:       groupKey,
 	}
 	if err := s.st.CreateTransferJob(ctx, job, spec.Files); err != nil {
 		// A concurrent submit with the same key lost the race; return the
 		// winner so both callers observe exactly one external job.
 		if existing, ok, lookupErr := s.st.GetTransferJobByIdempotencyKey(ctx, key); lookupErr == nil && ok {
+			if existing.Fingerprint != fingerprint {
+				apiFail(c, http.StatusConflict, "idempotency_key_conflict", "this Idempotency-Key was used with a different request")
+				return
+			}
 			c.JSON(http.StatusOK, gin.H{"idempotent": true, "job": s.transferJobPayload(ctx, existing)})
 			return
 		}
@@ -238,11 +248,18 @@ func (s *Server) validateTransferRequest(
 			continue
 		}
 		seen[path] = true
+		if rule.SrcKind == "local" {
+			if _, err := resolveLocalSource(rule.SrcLocalRoot, filepath.Join(sourceSubpath, path)); err != nil {
+				return spec, store.Rule{}, "", fail(http.StatusBadRequest, "path_escape", "file resolves outside the rule root")
+			}
+		}
 		size := item.Size
 		if size < 0 {
 			size = 0
 		}
-		files = append(files, store.TransferJobFile{Path: path, Size: size})
+		sourcePath := filepath.ToSlash(filepath.Join(sourceSubpath, path))
+		key, _ := store.FileGroupKey(rule, sourcePath)
+		files = append(files, store.TransferJobFile{Path: path, Size: size, SourcePath: sourcePath, GroupKey: key})
 	}
 
 	callbackURL := ""
@@ -259,6 +276,7 @@ func (s *Server) validateTransferRequest(
 		SourceSubpath:      sourceSubpath,
 		DestinationSubpath: destSubpath,
 		Files:              files,
+		RuleSnapshot:       &rule,
 	}
 	return spec, rule, callbackURL, nil
 }
@@ -435,8 +453,7 @@ func (s *Server) cancelTransferJob(c *gin.Context) {
 	}
 	switch job.Status {
 	case store.TransferStatusPending, store.TransferStatusBlocked:
-		if err := s.st.FinishTransferJob(ctx, job.JobID,
-			store.TransferStatusTerminated, 0, 0, "cancelled before start", nil); err != nil {
+		if cancelled, err := s.st.CancelWaitingTask(ctx, job.JobID); err != nil || !cancelled {
 			apiFail(c, http.StatusInternalServerError, "internal_error", "cannot cancel job")
 			return
 		}
@@ -472,8 +489,12 @@ func (s *Server) retryTransferJob(c *gin.Context) {
 			"only a terminal job can be retried")
 		return
 	}
+	if key == source.IdempotencyKey {
+		apiFail(c, http.StatusConflict, "idempotency_key_conflict", "a retry requires a new Idempotency-Key")
+		return
+	}
 	if existing, found, _ := s.st.GetTransferJobByIdempotencyKey(ctx, key); found {
-		if existing.Fingerprint != source.Fingerprint {
+		if existing.Fingerprint != source.Fingerprint || existing.RetryOf != source.JobID {
 			apiFail(c, http.StatusConflict, "idempotency_key_conflict",
 				"this Idempotency-Key was used with a different request")
 			return
@@ -481,32 +502,16 @@ func (s *Server) retryTransferJob(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"idempotent": true, "job": s.transferJobPayload(ctx, existing)})
 		return
 	}
-	spec, err := daemon.DecodeStoredTransferSpec(source.RequestJSON)
+
+	created, err := daemon.RetryTask(ctx, s.st, source, newID(), key)
 	if err != nil {
-		apiFail(c, http.StatusConflict, "job_not_retryable", "stored request cannot be replayed")
+		if existing, found, _ := s.st.GetTransferJobByIdempotencyKey(ctx, key); found && existing.RetryOf == source.JobID {
+			c.JSON(http.StatusOK, gin.H{"idempotent": true, "job": s.transferJobPayload(ctx, existing)})
+			return
+		}
+		apiFail(c, http.StatusConflict, "job_not_retryable", err.Error())
 		return
 	}
-	settings, err := s.st.RuntimeSettings(ctx)
-	if err != nil {
-		apiFail(c, http.StatusInternalServerError, "internal_error", "cannot load settings")
-		return
-	}
-	jobID := newID()
-	retry := store.TransferJob{
-		JobID:          jobID,
-		RuleID:         source.RuleID,
-		TransferMode:   spec.Operation,
-		IdempotencyKey: key,
-		Fingerprint:    source.Fingerprint,
-		RequestJSON:    source.RequestJSON,
-		CallbackURL:    source.CallbackURL,
-		LogPath:        filepath.Join(settings.LogDir, source.RuleID, jobID+".log"),
-	}
-	if err := s.st.CreateTransferJob(ctx, retry, spec.Files); err != nil {
-		apiFail(c, http.StatusConflict, "job_create_failed", "cannot create retry job")
-		return
-	}
-	created, _, _ := s.st.GetTransferJob(ctx, jobID)
 	c.JSON(http.StatusCreated, gin.H{
 		"idempotent": false,
 		"retry_of":   source.JobID,
@@ -524,12 +529,13 @@ func (s *Server) transferJobPayload(ctx context.Context, job store.TransferJob) 
 		"idempotency_key": job.IdempotencyKey,
 		"operation":       job.TransferMode,
 		"status":          job.Status,
-		"block_reason":    job.BlockReason,
-		"bytes_done":      job.BytesDone,
-		"avg_speed":       job.AvgSpeed,
-		"error":           job.Error,
-		"started_at":      unixOrNil(job.StartedAt.Unix()),
-		"ended_at":        unixOrNil(job.EndedAt.Unix()),
+		"phase":           job.Phase, "retry_of": job.RetryOf,
+		"block_reason": job.BlockReason,
+		"bytes_done":   job.BytesDone,
+		"avg_speed":    job.AvgSpeed,
+		"error":        job.Error,
+		"started_at":   unixOrNil(job.StartedAt.Unix()),
+		"ended_at":     unixOrNil(job.EndedAt.Unix()),
 	}
 	if counts, err := s.st.TransferJobFileCounts(ctx, job.JobID); err == nil {
 		payload["files_total"] = counts.Total
@@ -644,6 +650,9 @@ func validCallbackURL(raw string) (string, error) {
 	}
 	if parsed.Host == "" {
 		return "", errors.New("callback url must be absolute")
+	}
+	if parsed.User != nil || parsed.Fragment != "" {
+		return "", errors.New("callback url cannot include credentials or a fragment")
 	}
 	return value, nil
 }

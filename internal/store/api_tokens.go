@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/subtle"
+	"database/sql"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -63,119 +64,105 @@ func (s *Store) ListAPITokens(ctx context.Context) ([]APIToken, error) {
 	return tokens, nil
 }
 
-func (s *Store) saveAPITokens(ctx context.Context, tokens []APIToken) error {
-	if tokens == nil {
-		tokens = []APIToken{}
-	}
-	b, err := json.Marshal(tokens)
+func (s *Store) editAPITokens(ctx context.Context, edit func(*[]APIToken) (bool, error)) error {
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
-	return s.SetSetting(ctx, apiTokensSettingKey, string(b))
+	defer tx.Rollback()
+	var raw string
+	err = tx.QueryRowContext(ctx, `SELECT value FROM settings WHERE key=?`, apiTokensSettingKey).Scan(&raw)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
+	tokens := []APIToken{}
+	if raw != "" {
+		if err := json.Unmarshal([]byte(raw), &tokens); err != nil {
+			return err
+		}
+	}
+	changed, err := edit(&tokens)
+	if err != nil {
+		return err
+	}
+	if changed {
+		encoded, err := json.Marshal(tokens)
+		if err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, `INSERT INTO settings(key,value,updated_at) VALUES(?,?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=excluded.updated_at`, apiTokensSettingKey, string(encoded), nowUnix()); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
 }
-
-// CreateAPIToken mints a token and returns the plaintext exactly once. The
-// caller must show it to the operator immediately; it cannot be recovered.
 func (s *Store) CreateAPIToken(ctx context.Context, name string, expiresAt time.Time) (APIToken, string, error) {
 	name = strings.TrimSpace(name)
 	if name == "" {
 		return APIToken{}, "", errors.New("token name required")
 	}
-	tokens, err := s.ListAPITokens(ctx)
-	if err != nil {
-		return APIToken{}, "", err
-	}
 	plaintext, err := newAPITokenSecret()
 	if err != nil {
 		return APIToken{}, "", err
 	}
-	token := APIToken{
-		ID:        newTokenID(),
-		Name:      name,
-		Hash:      HashAPIToken(plaintext),
-		Enabled:   true,
-		CreatedAt: nowUnix(),
-	}
+	token := APIToken{ID: newTokenID(), Name: name, Hash: HashAPIToken(plaintext), Enabled: true, CreatedAt: nowUnix()}
 	if !expiresAt.IsZero() {
 		token.ExpiresAt = expiresAt.Unix()
 	}
-	tokens = append(tokens, token)
-	if err := s.saveAPITokens(ctx, tokens); err != nil {
-		return APIToken{}, "", err
-	}
-	return token, plaintext, nil
+	err = s.editAPITokens(ctx, func(tokens *[]APIToken) (bool, error) { *tokens = append(*tokens, token); return true, nil })
+	return token, plaintext, err
 }
-
 func (s *Store) SetAPITokenEnabled(ctx context.Context, id string, enabled bool) error {
-	tokens, err := s.ListAPITokens(ctx)
-	if err != nil {
-		return err
-	}
-	found := false
-	for i := range tokens {
-		if tokens[i].ID == id {
-			tokens[i].Enabled = enabled
-			found = true
-			break
+	return s.editAPITokens(ctx, func(tokens *[]APIToken) (bool, error) {
+		for i := range *tokens {
+			if (*tokens)[i].ID == id {
+				(*tokens)[i].Enabled = enabled
+				return true, nil
+			}
 		}
-	}
-	if !found {
-		return ErrAPITokenNotFound
-	}
-	return s.saveAPITokens(ctx, tokens)
+		return false, ErrAPITokenNotFound
+	})
 }
-
 func (s *Store) DeleteAPIToken(ctx context.Context, id string) error {
-	tokens, err := s.ListAPITokens(ctx)
-	if err != nil {
-		return err
-	}
-	kept := make([]APIToken, 0, len(tokens))
-	for _, token := range tokens {
-		if token.ID != id {
-			kept = append(kept, token)
+	return s.editAPITokens(ctx, func(tokens *[]APIToken) (bool, error) {
+		for i := range *tokens {
+			if (*tokens)[i].ID == id {
+				*tokens = append((*tokens)[:i], (*tokens)[i+1:]...)
+				return true, nil
+			}
 		}
-	}
-	if len(kept) == len(tokens) {
-		return ErrAPITokenNotFound
-	}
-	return s.saveAPITokens(ctx, kept)
+		return false, ErrAPITokenNotFound
+	})
 }
-
-// AuthenticateAPIToken resolves a plaintext bearer token. Every candidate is
-// compared in constant time and the loop never exits early, so a caller cannot
-// learn which token it nearly matched from response timing.
 func (s *Store) AuthenticateAPIToken(ctx context.Context, plaintext string) (APIToken, bool, error) {
 	plaintext = strings.TrimSpace(plaintext)
 	if plaintext == "" {
 		return APIToken{}, false, nil
 	}
-	tokens, err := s.ListAPITokens(ctx)
-	if err != nil {
-		return APIToken{}, false, err
-	}
-	now := time.Now()
-	wanted := []byte(HashAPIToken(plaintext))
-	matched := -1
-	for i, token := range tokens {
-		hit := subtle.ConstantTimeCompare([]byte(token.Hash), wanted) == 1
-		if hit && token.Active(now) {
-			matched = i
+	var result APIToken
+	found := false
+	err := s.editAPITokens(ctx, func(tokens *[]APIToken) (bool, error) {
+		now := time.Now()
+		wanted := []byte(HashAPIToken(plaintext))
+		matched := -1
+		for i, t := range *tokens {
+			if subtle.ConstantTimeCompare([]byte(t.Hash), wanted) == 1 && t.Active(now) {
+				matched = i
+			}
 		}
-	}
-	if matched < 0 {
-		return APIToken{}, false, nil
-	}
-	token := tokens[matched]
-	if now.Unix()-token.LastUsedAt >= int64(lastUsedThrottle.Seconds()) {
-		tokens[matched].LastUsedAt = now.Unix()
-		if err := s.saveAPITokens(ctx, tokens); err != nil {
-			// A failed bookkeeping write must not reject a valid credential.
-			return token, true, nil
+		if matched < 0 {
+			return false, nil
 		}
-		token = tokens[matched]
-	}
-	return token, true, nil
+		result = (*tokens)[matched]
+		found = true
+		if now.Unix()-result.LastUsedAt < int64(lastUsedThrottle.Seconds()) {
+			return false, nil
+		}
+		(*tokens)[matched].LastUsedAt = now.Unix()
+		result = (*tokens)[matched]
+		return true, nil
+	})
+	return result, found, err
 }
 
 // HashAPIToken is the single hashing definition shared by minting and auth.

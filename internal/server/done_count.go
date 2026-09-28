@@ -1,6 +1,7 @@
 package server
 
 import (
+	"115togd/internal/daemon"
 	"bufio"
 	"errors"
 	"io"
@@ -94,7 +95,7 @@ func (s *Server) doneCountFromLog(jobID string, logPath string) (int, error) {
 		if rerr == nil {
 			full := carry + line
 			carry = ""
-			if p, ok := parseTransferredPathLine(strings.TrimRight(full, "\r\n")); ok {
+			if p, ok := daemon.TransferredPathLine(strings.TrimRight(full, "\r\n")); ok {
 				ent.Done[p] = struct{}{}
 			}
 			continue
@@ -112,30 +113,3 @@ func (s *Server) doneCountFromLog(jobID string, logPath string) (int, error) {
 	ent.LastMod = info.ModTime()
 	return len(ent.Done), nil
 }
-
-func parseTransferredPathLine(line string) (string, bool) {
-	markers := []string{": Copied", ": Moved", ": Skipped"}
-	idx := -1
-	for _, m := range markers {
-		if j := strings.LastIndex(line, m); j > idx {
-			idx = j
-		}
-	}
-	if idx <= 0 {
-		return "", false
-	}
-	head := strings.TrimSpace(line[:idx])
-	// Typical: "2025/12/25 20:08:51 INFO  : path/to/file"
-	if j := strings.LastIndex(head, " : "); j >= 0 {
-		head = head[j+3:]
-	} else if j := strings.LastIndex(head, ": "); j >= 0 {
-		head = head[j+2:]
-	}
-	p := strings.TrimSpace(head)
-	p = strings.ReplaceAll(p, "\\", "/")
-	if p == "" {
-		return "", false
-	}
-	return p, true
-}
-

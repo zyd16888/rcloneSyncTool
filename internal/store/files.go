@@ -4,17 +4,17 @@ import (
 	"context"
 	// "database/sql"
 	"errors"
-	"strings"
 	"time"
 )
 
 type FileStateCounts struct {
-	New         int
-	Stable      int
-	Queued      int
+	New          int
+	Stable       int
+	Queued       int
 	Transferring int
-	Done        int
-	Failed      int
+	Done         int
+	Failed       int
+	Missing      int
 }
 
 func (s *Store) RuleFileCounts(ctx context.Context, ruleID string) (FileStateCounts, error) {
@@ -48,6 +48,8 @@ GROUP BY state
 			c.Done = n
 		case "failed":
 			c.Failed = n
+		case "missing":
+			c.Missing = n
 		}
 	}
 	return c, rows.Err()
@@ -60,88 +62,9 @@ type ScanEntry struct {
 }
 
 func (s *Store) UpsertScanEntries(ctx context.Context, rule Rule, entries []ScanEntry) error {
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = tx.Rollback() }()
-
-	now := time.Now().Unix()
-	stableSeconds := rule.StableSeconds
-	if stableSeconds < 0 {
-		stableSeconds = 0
-	}
-
-	stmt, err := tx.PrepareContext(ctx, `
-INSERT INTO files(rule_id, path, size, mod_time, state, last_seen, seen_size, seen_mod_time, job_id, fail_count, last_error)
-VALUES(?, ?, ?, ?, ?, ?, 0, '', NULL, 0, '')
-ON CONFLICT(rule_id, path) DO UPDATE SET
-  seen_size=files.size,
-  seen_mod_time=files.mod_time,
-  size=excluded.size,
-  mod_time=excluded.mod_time,
-  last_seen=excluded.last_seen,
-  state=CASE
-    WHEN files.state='transferring' THEN files.state
-    WHEN files.state='queued' THEN files.state
-    WHEN files.state='done' AND (excluded.size!=files.size OR excluded.mod_time!=files.mod_time) THEN 'new'
-    WHEN files.state='done' AND (excluded.size=files.size AND excluded.mod_time=files.mod_time) THEN 'done'
-    WHEN (excluded.size=files.size AND excluded.mod_time=files.mod_time) THEN 'stable'
-    WHEN (strftime('%s','now') - strftime('%s', excluded.mod_time) > ?) THEN 'stable'
-    ELSE 'new'
-  END
-`)
-	if err != nil {
-		return err
-	}
-	defer stmt.Close()
-
-	for _, e := range entries {
-		mod := e.ModTime.UTC().Format(time.RFC3339)
-		initialState := "new"
-		if time.Since(e.ModTime) > time.Duration(stableSeconds)*time.Second {
-			initialState = "stable"
-		}
-		if _, err := stmt.ExecContext(ctx, rule.ID, e.Path, e.Size, mod, initialState, now, stableSeconds); err != nil {
-			return err
-		}
-	}
-
-	if rule.MinFileSizeBytes > 0 {
-		if _, err := tx.ExecContext(ctx, `
-DELETE FROM files
-WHERE rule_id=? AND size < ? AND state IN ('new','stable','queued','failed')
-`, rule.ID, rule.MinFileSizeBytes); err != nil {
-			return err
-		}
-	}
-
-	// When ignore_extensions is changed after running for a while, old rows may remain in queue.
-	// Delete ignored extensions for non-transferring states so they won't be written into files-from.
-	if exts := ParseIgnoreExtensions(rule.IgnoreExtensions); len(exts) > 0 {
-		var b strings.Builder
-		b.WriteString(`
-DELETE FROM files
-WHERE rule_id=? AND state IN ('new','stable','queued','failed') AND (`)
-		args := make([]any, 0, 1+len(exts)*2)
-		args = append(args, rule.ID)
-		for i, ext := range exts {
-			if i > 0 {
-				b.WriteString(" OR ")
-			}
-			// strict suffix match (case-insensitive via LOWER)
-			b.WriteString("substr(LOWER(path), ?) = ?")
-			args = append(args, -len(ext), ext)
-		}
-		b.WriteString(")\n")
-
-		if _, err := tx.ExecContext(ctx, b.String(), args...); err != nil {
-			return err
-		}
-	}
-	return tx.Commit()
+	_, err := s.ApplyScan(ctx, rule, entries)
+	return err
 }
-
 func (s *Store) EnqueueStable(ctx context.Context, ruleID string, limit int, minSizeBytes int64) (int64, error) {
 	if limit <= 0 {
 		limit = 100
@@ -150,14 +73,18 @@ func (s *Store) EnqueueStable(ctx context.Context, ruleID string, limit int, min
 WITH cte AS (
   SELECT rowid
   FROM files
-  WHERE rule_id=? AND state='stable' AND ( ?<=0 OR size>=? )
-  ORDER BY last_seen DESC
+WHERE rule_id=? AND state='stable' AND source_present=1
+ AND EXISTS(SELECT 1 FROM file_groups g JOIN rules r ON r.id=g.rule_id
+ WHERE g.rule_id=files.rule_id AND g.group_key=files.group_key AND g.ready=1
+ AND g.changed_at<=? - r.stable_seconds*1000)
+ AND NOT EXISTS(SELECT 1 FROM files other WHERE other.rule_id=files.rule_id AND other.group_key=files.group_key AND other.source_present=1 AND other.state IN ('new','failed'))
+  ORDER BY path
   LIMIT ?
 )
 UPDATE files
 SET state='queued'
-WHERE rowid IN (SELECT rowid FROM cte)
-`, ruleID, minSizeBytes, minSizeBytes, limit)
+WHERE rule_id=? AND state='stable' AND source_present=1 AND group_key IN (SELECT group_key FROM files WHERE rowid IN (SELECT rowid FROM cte))
+`, ruleID, time.Now().UnixMilli(), limit, ruleID)
 	if err != nil {
 		return 0, err
 	}
@@ -169,7 +96,7 @@ func (s *Store) HasQueued(ctx context.Context, ruleID string) bool {
 	err := s.db.QueryRowContext(ctx, `
 SELECT 1
 FROM files
-WHERE rule_id=? AND state='queued'
+WHERE rule_id=? AND state='queued' AND source_present=1 AND (job_id IS NULL OR job_id='')
 LIMIT 1
 `, ruleID).Scan(&one)
 	return err == nil && one == 1
@@ -183,12 +110,12 @@ func (s *Store) RetryFailed(ctx context.Context, ruleID string, limit int) (int6
 WITH cte AS (
   SELECT rowid
   FROM files
-  WHERE rule_id=? AND state='failed'
+  WHERE rule_id=? AND state='failed' AND source_present=1
   ORDER BY last_seen DESC
   LIMIT ?
 )
 UPDATE files
-SET state='queued', last_error='', job_id=NULL
+SET state='stable', last_error='', job_id=NULL
 WHERE rowid IN (SELECT rowid FROM cte)
 `, ruleID, limit)
 	if err != nil {

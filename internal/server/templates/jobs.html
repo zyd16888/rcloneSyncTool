@@ -22,6 +22,8 @@
           <div class="label"><span class="label-text">状态</span></div>
           <select name="status" class="select select-bordered select-sm">
             <option value="" {{if eq .F.Status ""}}selected{{end}}>全部</option>
+            <option value="pending" {{if eq .F.Status "pending"}}selected{{end}}>等待执行</option>
+            <option value="blocked" {{if eq .F.Status "blocked"}}selected{{end}}>等待条件恢复</option>
             <option value="running" {{if eq .F.Status "running"}}selected{{end}}>running</option>
             <option value="done" {{if eq .F.Status "done"}}selected{{end}}>done</option>
             <option value="failed" {{if eq .F.Status "failed"}}selected{{end}}>failed</option>
@@ -89,18 +91,18 @@
                 </td>
                 <td class="opacity-70">{{ts .Job.StartedAt}}</td>
                 <td class="opacity-70">{{ts .Job.EndedAt}}</td>
-                <td class="opacity-70">{{if .HasM}}{{humanBytes .Metric.Bytes}}{{else}}{{humanBytes .Job.BytesDone}}{{end}}</td>
-                <td class="opacity-70">{{if .HasM}}{{humanSpeed .Metric.Speed}}{{else}}{{humanSpeed .Job.AvgSpeed}}{{end}}</td>
+                <td class="opacity-70">{{if and (eq .Job.Status "running") .HasM}}{{humanBytes .Metric.Bytes}}{{else}}{{humanBytes .Job.BytesDone}}{{end}}</td>
+                <td class="opacity-70">{{if and (eq .Job.Status "running") .HasM}}{{humanSpeed .Metric.Speed}}{{else}}{{humanSpeed .Job.AvgSpeed}}{{end}}</td>
                 <td class="opacity-70" style="max-width: 320px; word-break: break-word;">{{.Job.Error}}</td>
                 <td class="w-20">
-                  {{if eq .Job.Status "running"}}
+                  {{if or (eq .Job.Status "running") (eq .Job.Status "pending") (eq .Job.Status "blocked")}}
                     <form class="inline" method="post" action="/jobs/terminate" onsubmit="return confirm('确定要终止该任务吗？');">
                       <input type="hidden" name="id" value="{{.Job.JobID}}">
                       <input type="hidden" name="next" value="{{$.SelfURL}}">
                       <button class="btn btn-error btn-xs whitespace-nowrap" type="submit">终止</button>
                     </form>
                   {{else}}
-                    <span class="opacity-70">-</span>
+                    {{if or (eq .Job.Status "failed") (eq .Job.Status "terminated")}}<form method="post" action="/jobs/retry"><input type="hidden" name="id" value="{{.Job.JobID}}"><button class="btn btn-xs btn-outline" type="submit">重试</button></form>{{else}}<span class="opacity-70">-</span>{{end}}
                   {{end}}
                 </td>
               </tr>

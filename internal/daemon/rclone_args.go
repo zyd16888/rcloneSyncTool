@@ -67,6 +67,27 @@ type sanitizedArgs struct {
 	Blocked []string
 }
 
+// Reject changes to task control rather than silently discarding them. Filter
+// options remain valid and are applied when building the source manifest.
+func ValidateRcloneArgs(raw string) error {
+	args, err := ParseRcloneArgs(raw)
+	if err != nil {
+		return err
+	}
+	for _, arg := range args {
+		key, _, _ := strings.Cut(arg, "=")
+		key = strings.ToLower(key)
+		if strings.HasPrefix(key, "--rc") || strings.HasPrefix(key, "--stats") {
+			return errors.New("任务控制及统计参数由工具管理：" + key)
+		}
+		switch key {
+		case "--config", "--log-file", "--log-level", "--use-json-log", "--files-from", "--files-from-raw", "--files-from-replace", "--dry-run", "--partial", "--partial-dir":
+			return errors.New("任务参数不受支持或由工具管理：" + key)
+		}
+	}
+	return nil
+}
+
 func SanitizeRcloneArgs(args []string) sanitizedArgs {
 	var out []string
 	var blocked []string

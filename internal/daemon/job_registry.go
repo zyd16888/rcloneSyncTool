@@ -1,6 +1,7 @@
 package daemon
 
 import (
+	"context"
 	"os/exec"
 	"sync"
 	"sync/atomic"
@@ -8,6 +9,7 @@ import (
 
 type JobHandle struct {
 	cmd        *exec.Cmd
+	cancel     context.CancelFunc
 	terminated atomic.Bool
 }
 
@@ -26,6 +28,18 @@ func (r *JobRegistry) Register(jobID string, cmd *exec.Cmd) *JobHandle {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	h := &JobHandle{cmd: cmd}
+	if existing := r.m[jobID]; existing != nil {
+		existing.cmd = cmd
+		return existing
+	}
+	r.m[jobID] = h
+	return h
+}
+
+func (r *JobRegistry) RegisterCancel(jobID string, cancel context.CancelFunc) *JobHandle {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	h := &JobHandle{cancel: cancel}
 	r.m[jobID] = h
 	return h
 }
@@ -39,12 +53,16 @@ func (r *JobRegistry) Unregister(jobID string) {
 func (r *JobRegistry) Terminate(jobID string) bool {
 	r.mu.Lock()
 	h := r.m[jobID]
-	r.mu.Unlock()
-	if h == nil || h.cmd == nil || h.cmd.Process == nil {
+	defer r.mu.Unlock()
+	if h == nil {
 		return false
 	}
 	h.terminated.Store(true)
-	_ = h.cmd.Process.Kill()
+	if h.cancel != nil {
+		h.cancel()
+	}
+	if h.cmd != nil && h.cmd.Process != nil {
+		_ = h.cmd.Process.Kill()
+	}
 	return true
 }
-

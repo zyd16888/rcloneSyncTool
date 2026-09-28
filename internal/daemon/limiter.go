@@ -2,82 +2,79 @@ package daemon
 
 import (
 	"context"
-	"sync/atomic"
-	"time"
+	"sync"
 )
 
+// GlobalLimiter counts tasks even while limits are disabled. Its slots survive
+// changes to the configured limit and replacement of individual rule workers.
 type GlobalLimiter struct {
-	limit int64
-	sem   chan struct{}
+	mu      sync.Mutex
+	limit   int
+	running int
+	byRule  map[string]int
+	changed chan struct{}
 }
 
 func NewGlobalLimiter(limit int) *GlobalLimiter {
-	if limit < 0 {
-		limit = 0
-	}
-	return &GlobalLimiter{
-		limit: int64(limit),
-		sem:   make(chan struct{}, 65535),
-	}
+	return &GlobalLimiter{limit: max(0, limit), byRule: map[string]int{}, changed: make(chan struct{})}
 }
-
 func (g *GlobalLimiter) SetLimit(limit int) {
-	if limit < 0 {
-		limit = 0
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if limit = max(0, limit); g.limit != limit {
+		g.limit = limit
+		g.signal()
 	}
-	if limit > cap(g.sem) {
-		limit = cap(g.sem)
-	}
-	atomic.StoreInt64(&g.limit, int64(limit))
 }
-
-func (g *GlobalLimiter) Acquire(ctx context.Context) bool {
+func (g *GlobalLimiter) signal() { close(g.changed); g.changed = make(chan struct{}) }
+func (g *GlobalLimiter) tryAcquire(ruleID string, ruleLimit int) bool {
+	if g.limit > 0 && g.running >= g.limit {
+		return false
+	}
+	if ruleLimit > 0 && g.byRule[ruleID] >= ruleLimit {
+		return false
+	}
+	g.running++
+	g.byRule[ruleID]++
+	return true
+}
+func (g *GlobalLimiter) Acquire(ctx context.Context) bool { return g.AcquireRule(ctx, "", 0) }
+func (g *GlobalLimiter) AcquireRule(ctx context.Context, ruleID string, limit int) bool {
 	for {
 		if ctx.Err() != nil {
 			return false
 		}
-		limit := atomic.LoadInt64(&g.limit)
-		if limit <= 0 {
+		g.mu.Lock()
+		if g.tryAcquire(ruleID, limit) {
+			g.mu.Unlock()
 			return true
 		}
-		if int64(len(g.sem)) < limit {
-			select {
-			case g.sem <- struct{}{}:
-				return true
-			case <-ctx.Done():
-				return false
-			}
-		}
+		changed := g.changed
+		g.mu.Unlock()
 		select {
 		case <-ctx.Done():
 			return false
-		case <-time.After(150 * time.Millisecond):
+		case <-changed:
 		}
 	}
 }
-
-// TryAcquire takes a slot without waiting. The transfer queue uses it so a
-// busy host leaves the job untouched for the next tick instead of parking a
-// goroutine on a semaphore.
-func (g *GlobalLimiter) TryAcquire() bool {
-	limit := atomic.LoadInt64(&g.limit)
-	if limit <= 0 {
-		return true
-	}
-	if int64(len(g.sem)) >= limit {
-		return false
-	}
-	select {
-	case g.sem <- struct{}{}:
-		return true
-	default:
-		return false
-	}
+func (g *GlobalLimiter) TryAcquire() bool { return g.TryAcquireRule("", 0) }
+func (g *GlobalLimiter) TryAcquireRule(ruleID string, limit int) bool {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return g.tryAcquire(ruleID, limit)
 }
-
-func (g *GlobalLimiter) Release() {
-	select {
-	case <-g.sem:
-	default:
+func (g *GlobalLimiter) Release() { g.ReleaseRule("") }
+func (g *GlobalLimiter) ReleaseRule(ruleID string) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if g.byRule[ruleID] == 0 {
+		return
 	}
+	g.running--
+	g.byRule[ruleID]--
+	if g.byRule[ruleID] == 0 {
+		delete(g.byRule, ruleID)
+	}
+	g.signal()
 }

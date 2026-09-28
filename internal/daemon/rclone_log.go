@@ -2,6 +2,8 @@ package daemon
 
 import (
 	"bufio"
+	"encoding/json"
+	"io"
 	"os"
 	"strings"
 )
@@ -28,7 +30,17 @@ func logHadNothingToTransfer(logPath string) bool {
 }
 
 func parseTransferredPathLine(line string) (string, bool) {
-	markers := []string{": Copied", ": Moved", ": Skipped"}
+	if strings.HasPrefix(strings.TrimSpace(line), "{") {
+		var entry struct {
+			Msg    string `json:"msg"`
+			Object string `json:"object"`
+		}
+		if json.Unmarshal([]byte(line), &entry) == nil && entry.Object != "" && (strings.HasPrefix(entry.Msg, "Copied") || strings.HasPrefix(entry.Msg, "Moved")) {
+			return entry.Object, true
+		}
+		return "", false
+	}
+	markers := []string{": Copied", ": Moved"}
 	idx := -1
 	for _, m := range markers {
 		if j := strings.LastIndex(line, m); j > idx {
@@ -51,6 +63,33 @@ func parseTransferredPathLine(line string) (string, bool) {
 		return "", false
 	}
 	return p, true
+}
+
+func TransferredPathLine(line string) (string, bool) { return parseTransferredPathLine(line) }
+
+func statsFromLog(logPath string, offset int64) (rcStats, bool) {
+	f, err := os.Open(logPath)
+	if err != nil {
+		return rcStats{}, false
+	}
+	defer f.Close()
+	if _, err := f.Seek(offset, io.SeekStart); err != nil {
+		return rcStats{}, false
+	}
+	scanner := bufio.NewScanner(f)
+	scanner.Buffer(make([]byte, 64*1024), 1<<20)
+	var last rcStats
+	found := false
+	for scanner.Scan() {
+		var entry struct {
+			Stats map[string]any `json:"stats"`
+		}
+		if json.Unmarshal(scanner.Bytes(), &entry) == nil && entry.Stats != nil {
+			last = rcStats{Bytes: toInt64(entry.Stats["bytes"]), Speed: toFloat64(entry.Stats["speed"]), Transfers: int(toInt64(entry.Stats["transfers"])), Errors: int(toInt64(entry.Stats["errors"]))}
+			found = true
+		}
+	}
+	return last, found
 }
 
 func transferredPathsFromLog(logPath string) (map[string]struct{}, error) {

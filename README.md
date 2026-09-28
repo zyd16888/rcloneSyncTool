@@ -121,7 +121,7 @@ services:
 
 **Docker 环境：**
 ```bash
-echo "新密码" | docker exec -i rclone-syncd /app/rclone-syncd passwd -data /data -stdin
+echo "新密码" | docker exec -i rclone-syncd /usr/local/bin/rclone-syncd passwd -data /data -stdin
 ```
 
 **本地环境：**

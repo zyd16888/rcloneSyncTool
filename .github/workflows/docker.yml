@@ -55,13 +55,15 @@ jobs:
           push: true
           platforms: linux/amd64,linux/arm64
           target: runtime-official
+          build-args: APP_VERSION=${{ github.ref_name }}
           tags: ${{ env.OFFICIAL_TAGS }}
 
       - name: Resolve wiserain rclone release assets
         shell: bash
         run: |
           set -euo pipefail
-          api="https://api.github.com/repos/wiserain/rclone/releases/latest"
+          version="$(sed -n 's/^ARG WISERAIN_RCLONE_VERSION=//p' Dockerfile)"
+          api="https://api.github.com/repos/wiserain/rclone/releases/tags/${version}"
           json="$(curl -fsSL "$api")"
           has_amd64="$(echo "$json" | jq -r '[.assets[]?.name] | any(.[]; test("linux[-_]?amd64\\.zip$"; "i"))')"
           has_arm64="$(echo "$json" | jq -r '[.assets[]?.name] | any(.[]; test("linux[-_]?arm64\\.zip$"; "i"))')"
@@ -88,4 +90,5 @@ jobs:
           push: true
           platforms: ${{ env.WISERAIN_PLATFORMS }}
           target: runtime-115
+          build-args: APP_VERSION=${{ github.ref_name }}
           tags: ${{ env.WISERAIN_TAGS }}

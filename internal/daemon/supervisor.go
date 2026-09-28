@@ -2,7 +2,7 @@ package daemon
 
 import (
 	"context"
-	"errors"
+
 	"log"
 	"sync"
 	"time"
@@ -20,7 +20,10 @@ type Supervisor struct {
 	portManager   *PortManager
 	jobs          *JobRegistry
 
-	rootCtx context.Context
+	rootCtx  context.Context
+	taskWG   sync.WaitGroup
+	loopWG   sync.WaitGroup
+	workerWG sync.WaitGroup
 }
 
 func NewSupervisor(st *store.Store) *Supervisor {
@@ -34,7 +37,9 @@ func NewSupervisor(st *store.Store) *Supervisor {
 }
 
 func (s *Supervisor) Run(ctx context.Context) {
+	s.mu.Lock()
 	s.rootCtx = ctx
+	s.mu.Unlock()
 	t := time.NewTicker(5 * time.Second)
 	defer t.Stop()
 
@@ -106,12 +111,13 @@ func (s *Supervisor) reconcile(ctx context.Context) {
 		}
 		w := newRuleWorker(s.st, r, s.portManager, s.globalLimiter, s.jobs)
 		s.workers[id] = w
-		go w.run(ctx)
+		s.workerWG.Add(1)
+		go func() { defer s.workerWG.Done(); w.run(ctx) }()
 	}
 }
 
 func ruleSame(a, b store.Rule) bool {
-	return a.ID == b.ID &&
+	return a.GroupByDirectory == b.GroupByDirectory && a.AtomicPublish == b.AtomicPublish && a.StagingPath == b.StagingPath && a.ReadyMarker == b.ReadyMarker && a.ResumeEnabled == b.ResumeEnabled && a.PartialDir == b.PartialDir && a.PartialSuffix == b.PartialSuffix && a.ID == b.ID &&
 		a.LimitGroup == b.LimitGroup &&
 		a.SrcKind == b.SrcKind &&
 		a.SrcRemote == b.SrcRemote &&
@@ -166,45 +172,10 @@ func (s *Supervisor) TerminateJob(jobID string) bool {
 	return s.jobs.Terminate(jobID)
 }
 
-func (s *Supervisor) StartManualJob(rule store.Rule, jobID string, logPath string) {
-	ctx := s.rootCtx
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	go s.runManualJob(ctx, rule, jobID, logPath)
+func (s *Supervisor) Start(ctx context.Context) {
+	s.loopWG.Add(3)
+	go func() { defer s.loopWG.Done(); s.Run(ctx) }()
+	go func() { defer s.loopWG.Done(); s.StartTransferQueue(ctx) }()
+	go func() { defer s.loopWG.Done(); s.StartCallbackQueue(ctx) }()
 }
-
-func (s *Supervisor) runManualJob(ctx context.Context, rule store.Rule, jobID string, logPath string) {
-	settings, err := s.st.RuntimeSettings(ctx)
-	if err != nil {
-		_ = s.st.UpdateJobFailed(ctx, jobID, "load settings: "+err.Error(), 0, 0)
-		return
-	}
-	if s.globalLimiter != nil {
-		if ok := s.globalLimiter.Acquire(ctx); !ok {
-			_ = s.st.UpdateJobFailed(ctx, jobID, "acquire global limiter failed", 0, 0)
-			return
-		}
-		defer s.globalLimiter.Release()
-	}
-	port, err := s.portManager.Acquire()
-	if err != nil {
-		_ = s.st.UpdateJobFailed(ctx, jobID, "acquire rc port: "+err.Error(), 0, 0)
-		return
-	}
-	defer s.portManager.Release(port)
-
-	_ = s.st.UpdateJobRunning(ctx, jobID, port)
-
-	w := &ruleWorker{st: s.st, rule: rule, jr: s.jobs}
-	res := w.runWithMetrics(ctx, settings, port, "", logPath, jobID)
-	if res.Err != nil {
-		if errors.Is(res.Err, errTerminatedByUser) {
-			_ = s.st.UpdateJobTerminated(ctx, jobID, "terminated by user", res.BytesDone, res.AvgSpeed)
-			return
-		}
-		_ = s.st.UpdateJobFailed(ctx, jobID, res.Err.Error(), res.BytesDone, res.AvgSpeed)
-		return
-	}
-	_ = s.st.UpdateJobDone(ctx, jobID, res.BytesDone, res.AvgSpeed)
-}
+func (s *Supervisor) Wait() { s.loopWG.Wait(); s.workerWG.Wait(); s.taskWG.Wait() }

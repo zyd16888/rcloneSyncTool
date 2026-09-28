@@ -127,13 +127,13 @@
               <input type="checkbox" name="resume_enabled" value="1" class="checkbox" {{if .Rule.ResumeEnabled}}checked{{end}}>
               <span class="label-text">启用</span>
             </label>
-            <div class="label"><span class="label-text-alt opacity-70">对应 rclone 的 <code>--partial</code>。</span></div>
+            <div class="label"><span class="label-text-alt opacity-70">重试复用已完成的文件；字节续传取决于后端能力。</span></div>
           </label>
 
           <label class="form-control">
             <div class="label"><span class="label-text">partial-dir</span></div>
-            <input type="text" name="partial_dir" value="{{.Rule.PartialDir}}" class="input input-bordered" placeholder="可选：例如 .rclone-partial">
-            <div class="label"><span class="label-text-alt opacity-70">对应 rclone 的 <code>--partial-dir</code>；留空使用默认。</span></div>
+            <input type="text" name="partial_dir" value="{{.Rule.PartialDir}}" class="input input-bordered" readonly>
+            <div class="label"><span class="label-text-alt opacity-70">旧设置仅保留显示，不传入不受支持的 --partial-dir。</span></div>
           </label>
 
           <label class="form-control">
@@ -148,7 +148,7 @@
           <div class="label"><span class="label-text">自定义参数(可选)（rclone）</span></div>
           <textarea name="rclone_extra_args" rows="3" class="textarea textarea-bordered font-mono text-xs w-full" style="border:1px solid rgba(187, 197, 211, 0.35);padding:.75rem 1rem;border-radius:.5rem;" placeholder='例如：--exclude "*.tmp" --drive-acknowledge-abuse'>{{.Rule.RcloneExtraArgs}}</textarea>
           <div class="label">
-            <span class="label-text-alt opacity-70">仅对 copy/move 生效；支持引号；会自动屏蔽 <code>--rc*</code>/<code>--stats*</code>/<code>--log-file</code>/<code>--files-from</code>/<code>--config</code> 等参数。</span>
+            <span class="label-text-alt opacity-70">过滤参数用于准备文件清单；任务控制、日志、配置路径和 dry-run 参数会在保存时校验。</span>
           </div>
         </label>
 

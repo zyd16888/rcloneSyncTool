@@ -3,9 +3,9 @@ set -eu
 
 DATA_DIR="${DATA_DIR:-/data}"
 
-if [ "${1:-}" = "passwd" ]; then
-  exec /usr/local/bin/rclone-syncd "$@"
-fi
+case "${1:-}" in
+  passwd|apitoken|callbacksecret) exec /usr/local/bin/rclone-syncd "$@" ;;
+esac
 
 if [ -n "${RCLONE_SYNCD_LISTEN:-}" ]; then
   LISTEN="$RCLONE_SYNCD_LISTEN"

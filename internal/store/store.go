@@ -5,13 +5,17 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	_ "modernc.org/sqlite"
 )
 
 type Store struct {
-	db *sql.DB
+	db           *sql.DB
+	runtimeMu    sync.Mutex
+	runtimeCache RuntimeSettings
+	runtimeUntil time.Time
 }
 
 func Open(dbPath string) (*Store, error) {
@@ -243,7 +247,7 @@ CREATE TABLE IF NOT EXISTS settings (
 			return err
 		}
 	}
-	return nil
+	return s.migrateTaskLifecycle(ctx)
 }
 
 func nowUnix() int64 { return time.Now().Unix() }

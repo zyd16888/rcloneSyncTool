@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -16,9 +17,9 @@ import (
 )
 
 const (
-	authCookieName     = "rclone_syncd_auth"
-	authCookieMaxAge   = 30 * 24 * time.Hour
-	authSecretKey      = "ui_auth_secret"
+	authCookieName      = "rclone_syncd_auth"
+	authCookieMaxAge    = 30 * 24 * time.Hour
+	authSecretKey       = "ui_auth_secret"
 	authPasswordHashKey = "ui_password_hash"
 )
 
@@ -77,7 +78,9 @@ func issueAuthCookie(c *gin.Context, cfg uiAuthConfig) error {
 	sig := signHMAC(cfg.Secret, msg)
 	val := "v1." + ts + "." + nonceB64 + "." + sig
 
-	c.SetCookie(authCookieName, val, int(authCookieMaxAge.Seconds()), "/", "", false, true)
+	c.SetSameSite(http.SameSiteStrictMode)
+	secure := c.Request.TLS != nil || strings.EqualFold(c.GetHeader("X-Forwarded-Proto"), "https")
+	c.SetCookie(authCookieName, val, int(authCookieMaxAge.Seconds()), "/", "", secure, true)
 	return nil
 }
 
@@ -138,27 +141,55 @@ func (s *Server) authMiddleware() gin.HandlerFunc {
 
 		cfg, err := s.uiAuthConfig(c)
 		if err != nil {
-			c.Status(http.StatusInternalServerError)
+			c.AbortWithStatus(http.StatusInternalServerError)
 			return
 		}
 		if !cfg.HasPassword {
 			if strings.HasPrefix(p, "/api/") {
-				c.JSON(http.StatusUnauthorized, map[string]any{"error": "unauthorized"})
+				c.AbortWithStatusJSON(http.StatusUnauthorized, map[string]any{"error": "unauthorized"})
 				return
 			}
 			c.Redirect(http.StatusSeeOther, "/login?next="+urlQueryEscape(c.Request.URL.RequestURI()))
+			c.Abort()
 			return
 		}
 		if isAuthed(c, cfg) {
+			if c.Request.Method == http.MethodPost && !sameOriginRequest(c) {
+				c.AbortWithStatusJSON(http.StatusForbidden, map[string]any{"error": "cross-origin request rejected"})
+				return
+			}
 			c.Next()
 			return
 		}
 		if strings.HasPrefix(p, "/api/") {
-			c.JSON(http.StatusUnauthorized, map[string]any{"error": "unauthorized"})
+			c.AbortWithStatusJSON(http.StatusUnauthorized, map[string]any{"error": "unauthorized"})
 			return
 		}
 		c.Redirect(http.StatusSeeOther, "/login?next="+urlQueryEscape(c.Request.URL.RequestURI()))
+		c.Abort()
 	}
+}
+
+func sameOriginRequest(c *gin.Context) bool {
+	for _, name := range []string{"Origin", "Referer"} {
+		if raw := c.GetHeader(name); raw != "" {
+			u, err := url.Parse(raw)
+			return err == nil && (u.Scheme == "http" || u.Scheme == "https") && strings.EqualFold(u.Host, c.Request.Host)
+		}
+	}
+	return true
+}
+
+func safeNext(raw, fallback string) string {
+	value := strings.TrimSpace(raw)
+	if !strings.HasPrefix(value, "/") || strings.HasPrefix(value, "//") || strings.ContainsAny(value, "\\\r\n") {
+		return fallback
+	}
+	u, err := url.Parse(value)
+	if err != nil || u.IsAbs() || u.Host != "" {
+		return fallback
+	}
+	return value
 }
 
 func urlQueryEscape(s string) string {
@@ -182,10 +213,7 @@ func (s *Server) loginGet(c *gin.Context) {
 		return
 	}
 	if cfg.HasPassword && isAuthed(c, cfg) {
-		next := strings.TrimSpace(c.Query("next"))
-		if next == "" || !strings.HasPrefix(next, "/") {
-			next = "/"
-		}
+		next := safeNext(c.Query("next"), "/")
 		s.redirect(c, next)
 		return
 	}
@@ -202,10 +230,7 @@ func (s *Server) loginPost(c *gin.Context) {
 		c.Status(http.StatusInternalServerError)
 		return
 	}
-	next := strings.TrimSpace(c.PostForm("next"))
-	if next == "" || !strings.HasPrefix(next, "/") {
-		next = "/"
-	}
+	next := safeNext(c.PostForm("next"), "/")
 
 	if !cfg.HasPassword {
 		p1 := c.PostForm("password")

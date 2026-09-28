@@ -1,55 +1,53 @@
 package daemon
 
 import (
+	"115togd/internal/store"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
-
-	"115togd/internal/store"
 )
 
-// TransferSpec is one accepted API transfer request, already validated by the
-// server layer. Everything here is relative to the rule roots; the daemon adds
-// no caller-supplied rclone arguments of its own.
 type TransferSpec struct {
-	Operation          string
-	SourceSubpath      string
-	DestinationSubpath string
-	Files              []store.TransferJobFile
+	Operation          string                  `json:"operation"`
+	SourceSubpath      string                  `json:"source_subpath"`
+	DestinationSubpath string                  `json:"destination_subpath"`
+	Files              []store.TransferJobFile `json:"files,omitempty"`
+	RuleSnapshot       *store.Rule             `json:"rule,omitempty"`
+	Prepared           bool                    `json:"prepared,omitempty"`
+	GroupSignature     string                  `json:"group_signature,omitempty"`
 }
 
-// StartTransferQueue drains API transfer jobs. Running this as a loop rather
-// than a goroutine per request is what lets a job wait for quota, survive a
-// restart, and resume without the client resubmitting.
 func (s *Supervisor) StartTransferQueue(ctx context.Context) {
 	settings, err := s.st.RuntimeSettings(ctx)
 	tick := 2 * time.Second
-	if err == nil && settings.SchedulerTick > 0 {
+	if err == nil {
 		tick = settings.SchedulerTick
 	}
-	t := time.NewTicker(tick)
-	defer t.Stop()
+	ticker := time.NewTicker(tick)
+	defer ticker.Stop()
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-t.C:
+		case <-ticker.C:
 			s.drainTransferQueue(ctx)
+			if updated, e := s.st.RuntimeSettings(ctx); e == nil && updated.SchedulerTick != tick {
+				tick = updated.SchedulerTick
+				ticker.Reset(tick)
+			}
 		}
 	}
 }
-
 func (s *Supervisor) drainTransferQueue(ctx context.Context) {
 	jobs, err := s.st.ClaimableTransferJobs(ctx, 20)
 	if err != nil {
-		log.Printf("transfer queue: list jobs: %v", err)
+		log.Printf("task queue: %v", err)
 		return
 	}
 	for _, job := range jobs {
@@ -59,342 +57,180 @@ func (s *Supervisor) drainTransferQueue(ctx context.Context) {
 		s.tryStartTransferJob(ctx, job)
 	}
 }
-
 func (s *Supervisor) tryStartTransferJob(ctx context.Context, job store.TransferJob) {
-	rule, ok, err := s.st.GetRule(ctx, job.RuleID)
+	current, ok, err := s.st.GetRule(ctx, job.RuleID)
 	if err != nil {
-		log.Printf("transfer job %s: load rule: %v", job.JobID, err)
 		return
 	}
-	if !ok || !rule.APIEnabled {
-		// The rule was deleted or closed to the API after the job was accepted.
-		// Failing is honest: the transfer cannot be performed as requested.
-		_ = s.st.FinishTransferJob(ctx, job.JobID, store.TransferStatusFailed, 0, 0,
-			"rule is no longer available to the API", nil)
+	if !ok || (job.Origin == store.OriginAPI && !current.APIEnabled) {
+		s.failWaitingTask(ctx, job, "规则已删除或不再开放给 API")
+		return
+	}
+	if job.Origin == store.OriginScheduler && !current.Enabled && job.StartedAt.IsZero() {
+		_ = s.st.BlockTransferJob(ctx, job.JobID, "rule_paused", "规则已暂停，启用后继续排队")
+		return
+	}
+	spec, err := DecodeStoredTransferSpec(job.RequestJSON)
+	if err != nil && job.Origin == store.OriginManual {
+		spec = TransferSpec{Operation: current.TransferMode}
+		err = nil
+	}
+	if err != nil {
+		s.failWaitingTask(ctx, job, "无法解析持久任务清单："+err.Error())
+		return
+	}
+	if job.Origin == store.OriginAPI && !current.AllowsAPIOperation(spec.Operation) {
+		s.failWaitingTask(ctx, job, "规则已不允许该传输操作")
+		return
+	}
+	frozen := current
+	if spec.RuleSnapshot != nil {
+		frozen = *spec.RuleSnapshot
+	}
+	if err := frozen.Normalize(); err != nil {
+		s.failWaitingTask(ctx, job, err.Error())
+		return
+	}
+	if err := ValidateRcloneArgs(frozen.RcloneExtraArgs); err != nil {
+		s.failWaitingTask(ctx, job, err.Error())
 		return
 	}
 	if available, _ := rcloneAvailable(); !available {
-		_ = s.st.BlockTransferJob(ctx, job.JobID, store.BlockReasonRcloneUnavailable,
-			"rclone is not installed on the transfer host")
+		_ = s.st.BlockTransferJob(ctx, job.JobID, store.BlockReasonRcloneUnavailable, "未安装 rclone")
 		return
 	}
-	exceeded, err := s.quotaExceeded(ctx, rule)
-	if err != nil {
-		log.Printf("transfer job %s: quota check: %v", job.JobID, err)
+	if !s.globalLimiter.TryAcquireRule(current.ID, current.MaxParallelJobs) {
+		_ = s.st.BlockTransferJob(ctx, job.JobID, "concurrency", "等待规则或全局并发名额")
 		return
 	}
-	if exceeded {
-		_ = s.st.BlockTransferJob(ctx, job.JobID, store.BlockReasonQuotaExhausted,
-			"daily transfer quota reached, job will resume when the window rolls")
+	claimed, err := s.st.ClaimTaskPreparation(ctx, job.JobID)
+	if err != nil || !claimed {
+		s.globalLimiter.ReleaseRule(current.ID)
 		return
 	}
-
-	spec, err := decodeTransferSpec(job.RequestJSON)
-	if err != nil {
-		_ = s.st.FinishTransferJob(ctx, job.JobID, store.TransferStatusFailed, 0, 0,
-			"invalid stored request: "+err.Error(), nil)
-		return
-	}
-
-	if s.globalLimiter != nil && !s.globalLimiter.TryAcquire() {
-		return // Capacity is busy; the next tick retries without changing state.
-	}
-	port, err := s.portManager.Acquire()
-	if err != nil {
-		if s.globalLimiter != nil {
-			s.globalLimiter.Release()
-		}
-		return
-	}
-	started, err := s.st.StartTransferJob(ctx, job.JobID, port)
-	if err != nil || !started {
-		s.portManager.Release(port)
-		if s.globalLimiter != nil {
-			s.globalLimiter.Release()
-		}
-		return
-	}
+	taskCtx, cancel := context.WithCancel(ctx)
+	handle := s.jobs.RegisterCancel(job.JobID, cancel)
+	s.taskWG.Add(1)
 	go func() {
-		defer s.portManager.Release(port)
-		if s.globalLimiter != nil {
-			defer s.globalLimiter.Release()
-		}
-		s.runTransferJob(ctx, rule, job, spec, port)
+		defer s.taskWG.Done()
+		defer cancel()
+		defer s.jobs.Unregister(job.JobID)
+		defer s.globalLimiter.ReleaseRule(current.ID)
+		s.prepareAndRunTask(taskCtx, job, spec, frozen, current, handle)
 	}()
 }
 
-// quotaExceeded mirrors the scheduler budget rule so an API job never bypasses
-// a limit group that the Web UI enforces.
-func (s *Supervisor) quotaExceeded(ctx context.Context, rule store.Rule) (bool, error) {
-	limit := rule.DailyLimitBytes
-	since := time.Now().Add(-24 * time.Hour)
-	if strings.TrimSpace(rule.LimitGroup) != "" {
-		group, ok, err := s.st.GetLimitGroup(ctx, rule.LimitGroup)
-		if err != nil {
-			return false, err
-		}
-		if !ok {
-			return false, nil
-		}
-		limit = group.DailyLimitBytes
-		if limit <= 0 {
-			return false, nil
-		}
-		used, err := s.st.GroupBudgetSince(ctx, rule.LimitGroup, since)
-		if err != nil {
-			return false, err
-		}
-		return used >= limit, nil
+func (s *Supervisor) prepareAndRunTask(ctx context.Context, job store.TransferJob, spec TransferSpec, frozen, current store.Rule, handle *JobHandle) {
+	ctx = withTaskOptions(ctx, frozen)
+	if spec.RuleSnapshot == nil {
+		spec.RuleSnapshot = &frozen
 	}
-	if limit <= 0 {
-		return false, nil
+	fail := func(err error) {
+		final, done := context.WithTimeout(context.Background(), 10*time.Second)
+		defer done()
+		status := store.TransferStatusFailed
+		if ctx.Err() != nil || handle.Terminated() {
+			status = store.TransferStatusTerminated
+		}
+		_ = s.st.CompleteTask(final, job.JobID, status, job.BytesDone, 0, redactMessage(err.Error()), nil, nil)
 	}
-	used, err := s.st.RuleBudgetSince(ctx, rule.ID, since)
-	if err != nil {
-		return false, err
-	}
-	return used >= limit, nil
-}
-
-func (s *Supervisor) runTransferJob(
-	ctx context.Context,
-	rule store.Rule,
-	job store.TransferJob,
-	spec TransferSpec,
-	port int,
-) {
 	settings, err := s.st.RuntimeSettings(ctx)
 	if err != nil {
-		_ = s.st.FinishTransferJob(ctx, job.JobID, store.TransferStatusFailed, 0, 0,
-			"load settings: "+err.Error(), nil)
+		fail(err)
 		return
 	}
-
-	// The effective rule keeps the identity, quota group, bandwidth limit and
-	// extra args of the real rule, and only narrows the source and destination
-	// to the validated subpaths.
-	effective := rule
-	effective.TransferMode = spec.Operation
-	if rule.SrcKind == "local" {
-		effective.SrcLocalRoot = joinLocalPath(rule.SrcLocalRoot, spec.SourceSubpath)
-	} else {
-		effective.SrcPath = joinRemotePath(rule.SrcPath, spec.SourceSubpath)
-	}
-	effective.DstPath = joinRemotePath(rule.DstPath, spec.DestinationSubpath)
-
-	baseDir := filepath.Dir(settings.LogDir)
-	jobDir := filepath.Join(baseDir, "jobs", rule.ID, job.JobID)
-	if err := os.MkdirAll(jobDir, 0o755); err != nil {
-		_ = s.st.FinishTransferJob(ctx, job.JobID, store.TransferStatusFailed, 0, 0,
-			"mkdir job dir: "+err.Error(), nil)
-		return
-	}
-	if err := os.MkdirAll(filepath.Dir(job.LogPath), 0o755); err != nil {
-		_ = s.st.FinishTransferJob(ctx, job.JobID, store.TransferStatusFailed, 0, 0,
-			"mkdir log dir: "+err.Error(), nil)
-		return
-	}
-
-	// A single-file source needs a directory pair plus an explicit file list:
-	// `rclone move file dst` treats dst as the new file name, which would
-	// silently rename the media. Only the host that owns the filesystem can
-	// tell a file from a directory, so the decision is made here rather than
-	// guessed by the caller.
-	if len(spec.Files) == 0 && rule.SrcKind == "local" {
-		if parent, base, ok := splitSingleFileSource(effective.SrcLocalRoot); ok {
-			effective.SrcLocalRoot = parent
-			spec.Files = []store.TransferJobFile{{Path: base, State: "pending"}}
-			_ = s.st.ReplaceTransferJobFiles(ctx, job.JobID, spec.Files)
+	if !spec.Prepared {
+		spec, err = prepareTransfer(ctx, frozen, spec, settings)
+		if err != nil {
+			fail(err)
+			return
 		}
-	}
-
-	filesFrom := ""
-	if len(spec.Files) > 0 {
-		filesFrom = filepath.Join(jobDir, "files.txt")
-		var b strings.Builder
-		for _, f := range spec.Files {
-			b.WriteString(f.Path)
-			b.WriteString("\n")
+		encoded, err := EncodeTransferSpec(spec)
+		if err != nil {
+			fail(err)
+			return
 		}
-		if err := os.WriteFile(filesFrom, []byte(b.String()), 0o600); err != nil {
-			_ = s.st.FinishTransferJob(ctx, job.JobID, store.TransferStatusFailed, 0, 0,
-				"write files-from: "+err.Error(), nil)
+		if err := s.st.SavePreparedTask(ctx, job.JobID, encoded, spec.Files, job.GroupKey); err != nil {
+			if errors.Is(err, store.ErrGroupBusy) {
+				_ = s.st.DeferPreparingTask(ctx, job.JobID, "source_busy", err.Error())
+				return
+			}
+			fail(err)
 			return
 		}
 	}
-
-	worker := &ruleWorker{st: s.st, rule: effective, jr: s.jobs}
-	res := worker.runWithMetrics(ctx, settings, port, filesFrom, job.LogPath, job.JobID)
-
-	done, _ := transferredPathsFromLog(job.LogPath)
-	donePaths := make([]string, 0, len(done))
-	for path := range done {
-		donePaths = append(donePaths, path)
+	bytes, err := taskReservationBytes(ctx, job, spec, settings)
+	if err != nil {
+		fail(err)
+		return
 	}
-
-	status := store.TransferStatusDone
-	errMsg := ""
-	remaining := "failed"
-	switch {
-	case res.Err == nil:
-		remaining = "done"
-	case errors.Is(res.Err, errTerminatedByUser),
-		errors.Is(res.Err, errTerminatedBySignal),
-		errors.Is(res.Err, context.Canceled):
-		status = store.TransferStatusTerminated
-		errMsg = "terminated"
-	default:
-		status = store.TransferStatusFailed
-		errMsg = res.Err.Error()
+	port, err := s.portManager.Acquire()
+	if err != nil {
+		_ = s.st.DeferPreparingTask(ctx, job.JobID, "rc_port", "等待空闲 RC 端口")
+		return
 	}
-
-	if len(spec.Files) > 0 {
-		_ = s.st.MarkTransferJobFileStates(ctx, job.JobID, donePaths, remaining, errMsg)
-	} else {
-		// Without a declared file list, the transferred set from the log is the
-		// only record of what actually moved.
-		files := make([]store.TransferJobFile, 0, len(donePaths))
-		for _, path := range donePaths {
-			files = append(files, store.TransferJobFile{Path: path, State: "done"})
+	defer s.portManager.Release(port)
+	if err := s.st.ReserveAndStartTask(ctx, job.JobID, port, current, bytes); err != nil {
+		if errors.Is(err, store.ErrQuotaUnavailable) {
+			_ = s.st.DeferPreparingTask(ctx, job.JobID, store.BlockReasonQuotaExhausted, "剩余配额不足以启动完整任务，等待配额恢复")
+			return
 		}
-		_ = s.st.ReplaceTransferJobFiles(ctx, job.JobID, files)
+		fail(err)
+		return
 	}
-
-	counts, _ := s.st.TransferJobFileCounts(ctx, job.JobID)
-	if status == store.TransferStatusDone && counts.Failed > 0 {
-		errMsg = fmt.Sprintf("%d file(s) failed to transfer", counts.Failed)
-	}
-	manifest := map[string]any{
-		"operation": spec.Operation,
-		"rule_id":   rule.ID,
-		"destination": map[string]any{
-			"remote":  rule.DstRemote,
-			"root":    rule.DstPath,
-			"subpath": spec.DestinationSubpath,
-			"path":    fmt.Sprintf("%s:%s", rule.DstRemote, effective.DstPath),
-		},
-		"totals": map[string]any{
-			"files_total":  counts.Total,
-			"files_done":   counts.Done,
-			"files_failed": counts.Failed,
-			"bytes_done":   res.BytesDone,
-		},
-	}
-	_ = s.st.FinishTransferJob(ctx, job.JobID, status, res.BytesDone, res.AvgSpeed, errMsg, manifest)
-
-	if strings.TrimSpace(job.CallbackURL) != "" {
-		s.dispatchTransferCallback(ctx, job.JobID)
+	s.executeTask(ctx, job, spec, settings, port, handle)
+}
+func (s *Supervisor) failWaitingTask(ctx context.Context, job store.TransferJob, message string) {
+	if err := s.st.CompleteTask(ctx, job.JobID, store.TransferStatusFailed, job.BytesDone, 0, redactMessage(message), nil, nil); err != nil {
+		log.Printf("task %s: settle: %v", job.JobID, err)
 	}
 }
-
-// dispatchTransferCallback queues one delivery attempt. The queue owns retries
-// so a slow or unreachable receiver never blocks the transfer worker.
 func (s *Supervisor) dispatchTransferCallback(ctx context.Context, jobID string) {
 	if err := s.st.SetTransferJobCallbackState(ctx, jobID, "pending"); err != nil {
 		return
 	}
-	job, ok, err := s.st.GetTransferJob(ctx, jobID)
-	if err != nil || !ok {
-		return
-	}
-	go s.deliverCallback(ctx, job)
 }
-
-// splitSingleFileSource reports the parent directory and name of a source that
-// resolves to a regular file. A missing or non-regular path keeps directory
-// semantics so a transient stat failure never rewrites the transfer.
-func splitSingleFileSource(path string) (string, string, bool) {
-	info, err := os.Stat(path)
-	if err != nil || info.IsDir() || !info.Mode().IsRegular() {
+func splitSingleFileSource(p string) (string, string, bool) {
+	info, err := os.Stat(p)
+	if err != nil || !info.Mode().IsRegular() {
 		return "", "", false
 	}
-	parent := filepath.Dir(path)
-	base := filepath.Base(path)
-	if parent == "" || base == "" || base == "." {
-		return "", "", false
-	}
-	return parent, base, true
+	return filepath.Dir(p), filepath.Base(p), true
 }
-
 func joinRemotePath(root, sub string) string {
 	root = strings.TrimSuffix(strings.TrimSpace(root), "/")
 	sub = strings.Trim(strings.TrimSpace(sub), "/")
 	if sub == "" {
+		if root == "" {
+			return "/"
+		}
 		return root
 	}
 	return root + "/" + sub
 }
-
 func joinLocalPath(root, sub string) string {
-	sub = strings.Trim(strings.TrimSpace(sub), "/")
 	if sub == "" {
 		return root
 	}
 	return filepath.Join(root, filepath.FromSlash(sub))
 }
-
-// storedTransferSpec is the persisted shape of an accepted request. It is the
-// contract between the server layer that validates a submission and the daemon
-// that later executes it, including after a restart.
-type storedTransferSpec struct {
-	Operation          string `json:"operation"`
-	SourceSubpath      string `json:"source_subpath"`
-	DestinationSubpath string `json:"destination_subpath"`
-	Files              []struct {
-		Path string `json:"path"`
-		Size int64  `json:"size"`
-	} `json:"files"`
-}
-
-// EncodeTransferSpec renders a validated request for persistence.
 func EncodeTransferSpec(spec TransferSpec) (string, error) {
-	stored := storedTransferSpec{
-		Operation:          spec.Operation,
-		SourceSubpath:      spec.SourceSubpath,
-		DestinationSubpath: spec.DestinationSubpath,
-	}
-	for _, f := range spec.Files {
-		stored.Files = append(stored.Files, struct {
-			Path string `json:"path"`
-			Size int64  `json:"size"`
-		}{Path: f.Path, Size: f.Size})
-	}
-	b, err := json.Marshal(stored)
-	if err != nil {
-		return "", err
-	}
-	return string(b), nil
+	b, err := json.Marshal(spec)
+	return string(b), err
 }
-
-// DecodeStoredTransferSpec re-reads a persisted request so a retry can reuse
-// the exact spec that was originally validated.
 func DecodeStoredTransferSpec(raw string) (TransferSpec, error) {
-	return decodeTransferSpec(raw)
-}
-
-func decodeTransferSpec(raw string) (TransferSpec, error) {
-	var stored storedTransferSpec
-	if err := json.Unmarshal([]byte(raw), &stored); err != nil {
-		return TransferSpec{}, err
-	}
-	spec := TransferSpec{
-		Operation:          stored.Operation,
-		SourceSubpath:      stored.SourceSubpath,
-		DestinationSubpath: stored.DestinationSubpath,
-	}
-	for _, f := range stored.Files {
-		spec.Files = append(spec.Files, store.TransferJobFile{Path: f.Path, Size: f.Size})
+	var spec TransferSpec
+	if err := json.Unmarshal([]byte(raw), &spec); err != nil {
+		return spec, err
 	}
 	if spec.Operation != "copy" && spec.Operation != "move" {
-		return TransferSpec{}, fmt.Errorf("unsupported operation: %q", spec.Operation)
+		return spec, fmt.Errorf("unsupported operation: %q", spec.Operation)
+	}
+	for i := range spec.Files {
+		if !validRelativeFile(spec.Files[i].Path) {
+			return spec, errors.New("持久文件清单包含越界路径")
+		}
 	}
 	return spec, nil
 }
-
-func rcloneAvailable() (bool, string) {
-	path, err := exec.LookPath("rclone")
-	if err != nil {
-		return false, ""
-	}
-	return true, path
-}
+func decodeTransferSpec(raw string) (TransferSpec, error) { return DecodeStoredTransferSpec(raw) }

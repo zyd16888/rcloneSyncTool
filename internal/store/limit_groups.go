@@ -60,8 +60,18 @@ ON CONFLICT(name) DO UPDATE SET
 }
 
 func (s *Store) DeleteLimitGroup(ctx context.Context, name string) error {
-	_, err := s.db.ExecContext(ctx, `DELETE FROM limit_groups WHERE name=?`, name)
-	return err
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.ExecContext(ctx, `UPDATE rules SET limit_group='',updated_at=? WHERE limit_group=?`, nowUnix(), name); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM limit_groups WHERE name=?`, name); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (s *Store) SetRulesForLimitGroup(ctx context.Context, groupName string, ruleIDs []string) error {

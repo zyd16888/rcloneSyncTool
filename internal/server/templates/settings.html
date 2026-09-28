@@ -92,6 +92,8 @@
         </div>
 
         <div class="flex flex-wrap gap-2">
+          <label class="form-control w-full"><div class="label"><span class="label-text">单次扫描超时（秒）</span></div><input class="input input-bordered" type="number" min="1" max="86400" name="scan_timeout_sec" value="{{index .S "scan_timeout_sec"}}" placeholder="默认 600"><div class="label"><span class="label-text-alt opacity-70">源扫描、元数据读取超时后会明确失败，调度继续处理其他任务。</span></div></label>
+          <label class="form-control w-full"><div class="label"><span class="label-text">允许的回调接收端（可选）</span></div><input class="input input-bordered" name="callback_allowed_hosts" value="{{index .S "callback_allowed_hosts"}}" placeholder="例如 workflow.example.com, 192.168.1.10:8080"><div class="label"><span class="label-text-alt opacity-70">配置后仅向列出的主机发送回调；留空保持现有接收端兼容。</span></div></label>
           <button class="btn btn-info text-info-content" type="submit">保存</button>
           <button class="btn btn-ghost" type="button" id="btnCheck">检测 rclone</button>
         </div>

@@ -4,201 +4,157 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strings"
 	"time"
 )
 
+const ruleColumns = `id, limit_group, src_kind, src_remote, src_path, src_local_root, local_watch_enabled,
+ dst_remote, dst_path, transfer_mode, rclone_extra_args, resume_enabled, partial_dir, partial_suffix,
+ ignore_extensions, bwlimit, daily_limit_bytes, min_file_size_bytes, is_manual, api_enabled, api_allowed_operations,
+ max_parallel_jobs, scan_interval_sec, stable_seconds, batch_size, enabled,
+ group_by_directory, atomic_publish, staging_path, ready_marker, created_at, updated_at`
+
+func scanRuleRow(scan func(...any) error) (Rule, error) {
+	var r Rule
+	var watch, resume, manual, api, enabled, grouped, atomic int
+	var created, updated int64
+	err := scan(&r.ID, &r.LimitGroup, &r.SrcKind, &r.SrcRemote, &r.SrcPath, &r.SrcLocalRoot, &watch,
+		&r.DstRemote, &r.DstPath, &r.TransferMode, &r.RcloneExtraArgs, &resume, &r.PartialDir, &r.PartialSuffix,
+		&r.IgnoreExtensions, &r.Bwlimit, &r.DailyLimitBytes, &r.MinFileSizeBytes, &manual, &api, &r.APIAllowedOperations,
+		&r.MaxParallelJobs, &r.ScanIntervalSec, &r.StableSeconds, &r.BatchSize, &enabled,
+		&grouped, &atomic, &r.StagingPath, &r.ReadyMarker, &created, &updated)
+	r.LocalWatch, r.ResumeEnabled, r.IsManual, r.APIEnabled, r.Enabled = watch != 0, resume != 0, manual != 0, api != 0, enabled != 0
+	r.GroupByDirectory, r.AtomicPublish = grouped != 0, atomic != 0
+	r.CreatedAt, r.UpdatedAt = time.Unix(created, 0), time.Unix(updated, 0)
+	return r, err
+}
+
 func (s *Store) ListRules(ctx context.Context) ([]Rule, error) {
-	rows, err := s.db.QueryContext(ctx, `
-SELECT id, limit_group, src_kind, src_remote, src_path, src_local_root, local_watch_enabled,
-       dst_remote, dst_path, transfer_mode, rclone_extra_args, resume_enabled, partial_dir, partial_suffix,
-       ignore_extensions, bwlimit,
-       daily_limit_bytes, min_file_size_bytes, is_manual, api_enabled, api_allowed_operations,
-       max_parallel_jobs, scan_interval_sec, stable_seconds, batch_size, enabled,
-       created_at, updated_at
-FROM rules
-WHERE is_manual=0
-ORDER BY id
-`)
+	rows, err := s.db.QueryContext(ctx, `SELECT `+ruleColumns+` FROM rules WHERE is_manual=0 AND is_deleted=0 ORDER BY id`)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	var out []Rule
 	for rows.Next() {
-		var r Rule
-		var enabled int
-		var watch int
-		var resumeEnabled int
-		var isManual int
-		var apiEnabled int
-		var created, updated int64
-		if err := rows.Scan(
-			&r.ID, &r.LimitGroup, &r.SrcKind, &r.SrcRemote, &r.SrcPath, &r.SrcLocalRoot, &watch,
-			&r.DstRemote, &r.DstPath, &r.TransferMode, &r.RcloneExtraArgs, &resumeEnabled, &r.PartialDir, &r.PartialSuffix,
-			&r.IgnoreExtensions, &r.Bwlimit,
-			&r.DailyLimitBytes, &r.MinFileSizeBytes, &isManual, &apiEnabled, &r.APIAllowedOperations,
-			&r.MaxParallelJobs, &r.ScanIntervalSec, &r.StableSeconds, &r.BatchSize, &enabled,
-			&created, &updated,
-		); err != nil {
+		r, err := scanRuleRow(rows.Scan)
+		if err != nil {
 			return nil, err
 		}
-		r.Enabled = enabled != 0
-		r.LocalWatch = watch != 0
-		r.ResumeEnabled = resumeEnabled != 0
-		r.IsManual = isManual != 0
-		r.APIEnabled = apiEnabled != 0
-		r.CreatedAt = time.Unix(created, 0)
-		r.UpdatedAt = time.Unix(updated, 0)
 		out = append(out, r)
 	}
 	return out, rows.Err()
 }
 
 func (s *Store) GetRule(ctx context.Context, id string) (Rule, bool, error) {
-	var r Rule
-	var enabled int
-	var watch int
-	var resumeEnabled int
-	var isManual int
-	var apiEnabled int
-	var created, updated int64
-	err := s.db.QueryRowContext(ctx, `
-SELECT id, limit_group, src_kind, src_remote, src_path, src_local_root, local_watch_enabled,
-       dst_remote, dst_path, transfer_mode, rclone_extra_args, resume_enabled, partial_dir, partial_suffix,
-       ignore_extensions, bwlimit,
-       daily_limit_bytes, min_file_size_bytes, is_manual, api_enabled, api_allowed_operations,
-       max_parallel_jobs, scan_interval_sec, stable_seconds, batch_size, enabled,
-       created_at, updated_at
-FROM rules
-WHERE id=?
-`, id).Scan(
-		&r.ID, &r.LimitGroup, &r.SrcKind, &r.SrcRemote, &r.SrcPath, &r.SrcLocalRoot, &watch,
-		&r.DstRemote, &r.DstPath, &r.TransferMode, &r.RcloneExtraArgs, &resumeEnabled, &r.PartialDir, &r.PartialSuffix,
-		&r.IgnoreExtensions, &r.Bwlimit,
-		&r.DailyLimitBytes, &r.MinFileSizeBytes, &isManual, &apiEnabled, &r.APIAllowedOperations,
-		&r.MaxParallelJobs, &r.ScanIntervalSec, &r.StableSeconds, &r.BatchSize, &enabled,
-		&created, &updated,
-	)
+	r, err := scanRuleRow(s.db.QueryRowContext(ctx, `SELECT `+ruleColumns+` FROM rules WHERE id=? AND is_deleted=0`, id).Scan)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Rule{}, false, nil
 	}
-	if err != nil {
-		return Rule{}, false, err
-	}
-	r.Enabled = enabled != 0
-	r.LocalWatch = watch != 0
-	r.ResumeEnabled = resumeEnabled != 0
-	r.IsManual = isManual != 0
-	r.APIEnabled = apiEnabled != 0
-	r.CreatedAt = time.Unix(created, 0)
-	r.UpdatedAt = time.Unix(updated, 0)
-	return r, true, nil
+	return r, err == nil, err
+}
+
+func ruleTransferChanged(a, b Rule) bool {
+	return a.SrcKind != b.SrcKind || a.SrcRemote != b.SrcRemote || a.SrcPath != b.SrcPath || a.SrcLocalRoot != b.SrcLocalRoot ||
+		a.DstRemote != b.DstRemote || a.DstPath != b.DstPath || a.TransferMode != b.TransferMode ||
+		a.GroupByDirectory != b.GroupByDirectory || a.AtomicPublish != b.AtomicPublish || a.StagingPath != b.StagingPath || a.ReadyMarker != b.ReadyMarker
 }
 
 func (s *Store) UpsertRule(ctx context.Context, r Rule) error {
 	if err := r.Normalize(); err != nil {
 		return err
 	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	var deleted int
+	if err := tx.QueryRowContext(ctx, `SELECT is_deleted FROM rules WHERE id=?`, r.ID).Scan(&deleted); err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return err
+	}
+	if deleted != 0 {
+		return errors.New("该规则 ID 已用于历史任务，请使用新的 ID")
+	}
+	old, oldErr := scanRuleRow(tx.QueryRowContext(ctx, `SELECT `+ruleColumns+` FROM rules WHERE id=?`, r.ID).Scan)
+	if oldErr != nil && !errors.Is(oldErr, sql.ErrNoRows) {
+		return oldErr
+	}
+	if oldErr == nil && ruleTransferChanged(old, r) {
+		var running int
+		if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM jobs WHERE rule_id=? AND status='running'`, r.ID).Scan(&running); err != nil {
+			return err
+		}
+		if running > 0 {
+			return errors.New("规则存在运行任务，请完成或终止任务后再修改传输路径、模式或分组方式")
+		}
+		if _, err := tx.ExecContext(ctx, `UPDATE jobs SET status='terminated', ended_at=?, updated_at=?, error='rule transfer configuration changed', reserved_bytes=0 WHERE rule_id=? AND status IN ('pending','blocked')`, nowUnix(), nowUnix(), r.ID); err != nil {
+			return err
+		}
+		// This only invalidates the local index. Source and destination files are
+		// reconciled by the new execution plan; no media is deleted here.
+		if _, err := tx.ExecContext(ctx, `DELETE FROM files WHERE rule_id=?`, r.ID); err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, `DELETE FROM file_groups WHERE rule_id=?`, r.ID); err != nil {
+			return err
+		}
+	}
 	now := nowUnix()
-	_, err := s.db.ExecContext(ctx, `
-INSERT INTO rules(
-  id, limit_group, src_kind, src_remote, src_path, src_local_root, local_watch_enabled,
-  dst_remote, dst_path, transfer_mode, rclone_extra_args, resume_enabled, partial_dir, partial_suffix,
-  ignore_extensions, bwlimit,
-  daily_limit_bytes, min_file_size_bytes, is_manual, api_enabled, api_allowed_operations,
-  max_parallel_jobs, scan_interval_sec, stable_seconds, batch_size, enabled,
-  created_at, updated_at
-)
-VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-ON CONFLICT(id) DO UPDATE SET
-  limit_group=excluded.limit_group,
-  src_kind=excluded.src_kind,
-  src_remote=excluded.src_remote,
-  src_path=excluded.src_path,
-  src_local_root=excluded.src_local_root,
-  local_watch_enabled=excluded.local_watch_enabled,
-  dst_remote=excluded.dst_remote,
-  dst_path=excluded.dst_path,
-  transfer_mode=excluded.transfer_mode,
-  rclone_extra_args=excluded.rclone_extra_args,
-  resume_enabled=excluded.resume_enabled,
-  partial_dir=excluded.partial_dir,
-  partial_suffix=excluded.partial_suffix,
-  ignore_extensions=excluded.ignore_extensions,
-  bwlimit=excluded.bwlimit,
-  daily_limit_bytes=excluded.daily_limit_bytes,
-  min_file_size_bytes=excluded.min_file_size_bytes,
-  is_manual=excluded.is_manual,
-  api_enabled=excluded.api_enabled,
-  api_allowed_operations=excluded.api_allowed_operations,
-  max_parallel_jobs=excluded.max_parallel_jobs,
-  scan_interval_sec=excluded.scan_interval_sec,
-  stable_seconds=excluded.stable_seconds,
-  batch_size=excluded.batch_size,
-  enabled=excluded.enabled,
-  updated_at=excluded.updated_at
-`, r.ID, r.LimitGroup, r.SrcKind, r.SrcRemote, r.SrcPath, r.SrcLocalRoot, boolToInt(r.LocalWatch),
+	args := []any{r.ID, r.LimitGroup, r.SrcKind, r.SrcRemote, r.SrcPath, r.SrcLocalRoot, boolToInt(r.LocalWatch),
 		r.DstRemote, r.DstPath, r.TransferMode, r.RcloneExtraArgs, boolToInt(r.ResumeEnabled), r.PartialDir, r.PartialSuffix,
-		r.IgnoreExtensions, r.Bwlimit,
-		r.DailyLimitBytes, r.MinFileSizeBytes, boolToInt(r.IsManual), boolToInt(r.APIEnabled), r.APIAllowedOperations,
+		r.IgnoreExtensions, r.Bwlimit, r.DailyLimitBytes, r.MinFileSizeBytes, boolToInt(r.IsManual), boolToInt(r.APIEnabled), r.APIAllowedOperations,
 		r.MaxParallelJobs, r.ScanIntervalSec, r.StableSeconds, r.BatchSize, boolToInt(r.Enabled),
-		now, now,
-	)
-	return err
+		boolToInt(r.GroupByDirectory), boolToInt(r.AtomicPublish), r.StagingPath, r.ReadyMarker, now, now}
+	var updates []string
+	for _, col := range strings.Split(ruleColumns, ",") {
+		col = strings.TrimSpace(col)
+		if col != "id" && col != "created_at" {
+			updates = append(updates, col+"=excluded."+col)
+		}
+	}
+	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(args)), ",")
+	if _, err := tx.ExecContext(ctx, `INSERT INTO rules(`+ruleColumns+`) VALUES(`+placeholders+`) ON CONFLICT(id) DO UPDATE SET `+strings.Join(updates, ","), args...); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
+// Keep task history and quota accounting when a rule is removed from the UI.
 func (s *Store) DeleteRule(ctx context.Context, id string) error {
-	_, err := s.db.ExecContext(ctx, `DELETE FROM rules WHERE id=?`, id)
-	return err
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	var active int
+	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM jobs WHERE rule_id=? AND status='running'`, id).Scan(&active); err != nil {
+		return err
+	}
+	if active > 0 {
+		return errors.New("规则仍有运行任务，请完成或终止任务后删除")
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE rules SET is_deleted=1, enabled=0, api_enabled=0, updated_at=? WHERE id=?`, nowUnix(), id); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE jobs SET status='terminated', ended_at=?, updated_at=?, reserved_bytes=0, error='rule deleted' WHERE rule_id=? AND status IN ('pending','blocked')`, nowUnix(), nowUnix(), id); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (s *Store) GetRulesByGroup(ctx context.Context, group string) ([]Rule, error) {
-	if group == "" {
-		return nil, nil
-	}
-	rows, err := s.db.QueryContext(ctx, `
-SELECT id, limit_group, src_kind, src_remote, src_path, src_local_root, local_watch_enabled,
-       dst_remote, dst_path, transfer_mode, rclone_extra_args, resume_enabled, partial_dir, partial_suffix,
-       ignore_extensions, bwlimit,
-       daily_limit_bytes, min_file_size_bytes, is_manual, api_enabled, api_allowed_operations,
-       max_parallel_jobs, scan_interval_sec, stable_seconds, batch_size, enabled,
-       created_at, updated_at
-FROM rules
-WHERE limit_group=? AND is_manual=0
-`, group)
+	rules, err := s.ListRules(ctx)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 	var out []Rule
-	for rows.Next() {
-		var r Rule
-		var enabled int
-		var watch int
-		var resumeEnabled int
-		var isManual int
-		var apiEnabled int
-		var created, updated int64
-		if err := rows.Scan(
-			&r.ID, &r.LimitGroup, &r.SrcKind, &r.SrcRemote, &r.SrcPath, &r.SrcLocalRoot, &watch,
-			&r.DstRemote, &r.DstPath, &r.TransferMode, &r.RcloneExtraArgs, &resumeEnabled, &r.PartialDir, &r.PartialSuffix,
-			&r.IgnoreExtensions, &r.Bwlimit,
-			&r.DailyLimitBytes, &r.MinFileSizeBytes, &isManual, &apiEnabled, &r.APIAllowedOperations,
-			&r.MaxParallelJobs, &r.ScanIntervalSec, &r.StableSeconds, &r.BatchSize, &enabled,
-			&created, &updated,
-		); err != nil {
-			return nil, err
+	for _, rule := range rules {
+		if rule.LimitGroup == group {
+			out = append(out, rule)
 		}
-		r.Enabled = enabled != 0
-		r.LocalWatch = watch != 0
-		r.ResumeEnabled = resumeEnabled != 0
-		r.IsManual = isManual != 0
-		r.APIEnabled = apiEnabled != 0
-		r.CreatedAt = time.Unix(created, 0)
-		r.UpdatedAt = time.Unix(updated, 0)
-		out = append(out, r)
 	}
-	return out, rows.Err()
+	return out, nil
 }
 
 func boolToInt(b bool) int {

@@ -27,7 +27,7 @@
           </svg>
         </div>
         <div class="text-sm"><span class="opacity-70">当前总速度：</span><b id="statSpeed" class="tabular-nums text-lg">{{humanSpeed .TotalSpeed}}</b></div>
-        <div class="text-sm"><span class="opacity-70">运行中任务：</span><b class="tabular-nums">{{.RunningJobs}}</b></div>
+        <div class="text-sm"><span class="opacity-70">运行中任务：</span><b class="tabular-nums" id="statRunning">{{.RunningJobs}}</b></div>
       </div>
     </div>
   </div>
@@ -88,13 +88,13 @@
       </div>
       <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {{range .LimitGroups}}
-          <div class="flex flex-col gap-1 p-3 rounded-lg border {{if ge .Usage .Limit}}border-error bg-error/5{{else}}border-base-200 bg-base-200/30{{end}}">
+          <div class="flex flex-col gap-1 p-3 rounded-lg border {{if and (gt .Limit 0) (ge .Usage .Limit)}}border-error bg-error/5{{else}}border-base-200 bg-base-200/30{{end}}">
             <div class="flex justify-between items-center">
               <span class="font-bold text-sm truncate">{{.Name}}</span>
               <span class="text-xs opacity-60">{{if gt .Limit 0}}{{humanBytes .Usage}} / {{humanBytes .Limit}}{{else}}{{humanBytes .Usage}} / 不限{{end}}</span>
             </div>
-            <progress class="progress w-full {{if ge .Usage .Limit}}progress-error{{else}}progress-primary{{end}}" value="{{.Usage}}" max="{{if gt .Limit 0}}{{.Limit}}{{else}}{{.Usage}}{{end}}"></progress>
-            {{if ge .Usage .Limit}}
+            <progress class="progress w-full {{if and (gt .Limit 0) (ge .Usage .Limit)}}progress-error{{else}}progress-primary{{end}}" value="{{.Usage}}" max="{{if gt .Limit 0}}{{.Limit}}{{else}}{{.Usage}}{{end}}"></progress>
+            {{if and (gt .Limit 0) (ge .Usage .Limit)}}
               <div class="text-[10px] text-error font-bold text-right uppercase">已超限</div>
             {{end}}
           </div>
@@ -175,7 +175,7 @@
                     {{if .Rule.LimitGroup}}
                       <div class="flex items-center gap-2 text-[9px] opacity-60">
                         <span class="badge badge-xs badge-ghost scale-90 origin-left">组: {{.Rule.LimitGroup}}</span>
-                        <span class="{{if ge .Usage24h .GroupLimit}}text-error font-bold{{end}}">{{humanBytes .Usage24h}}{{if gt .GroupLimit 0}}/{{humanBytes .GroupLimit}}{{end}}</span>
+                        <span class="{{if and (gt .GroupLimit 0) (ge .Usage24h .GroupLimit)}}text-error font-bold{{end}}">{{humanBytes .Usage24h}}{{if gt .GroupLimit 0}}/{{humanBytes .GroupLimit}}{{end}}</span>
                       </div>
                     {{else if gt .Usage24h 0}}
                       <div class="text-[9px] opacity-50">24h: {{humanBytes .Usage24h}}</div>
@@ -221,8 +221,8 @@
                 <span class="badge {{if eq .Job.Status "running"}}badge-success{{else if eq .Job.Status "failed"}}badge-error{{else if eq .Job.Status "terminated"}}badge-warning{{else}}badge-info{{end}}">{{.Job.Status}}</span>
               </td>
               <td class="opacity-70">{{ts .Job.StartedAt}}</td>
-              <td class="opacity-70">{{if .HasM}}{{humanBytes .Metric.Bytes}}{{else}}{{humanBytes .Job.BytesDone}}{{end}}</td>
-              <td class="opacity-70">{{if .HasM}}{{humanSpeed .Metric.Speed}}{{else}}{{humanSpeed .Job.AvgSpeed}}{{end}}</td>
+              <td class="opacity-70">{{if and (eq .Job.Status "running") .HasM}}{{humanBytes .Metric.Bytes}}{{else}}{{humanBytes .Job.BytesDone}}{{end}}</td>
+              <td class="opacity-70">{{if and (eq .Job.Status "running") .HasM}}{{humanSpeed .Metric.Speed}}{{else}}{{humanSpeed .Job.AvgSpeed}}{{end}}</td>
             </tr>
             {{end}}
           </tbody>
@@ -261,87 +261,6 @@
 
 <script src="/static/realtime_chart.js"></script>
 <script>
-  // Fallback: if static script failed to load, define chart helper inline.
-  if (typeof createLineChart !== "function") {
-    function createLineChart(canvas, opts) {
-      const options = opts || {};
-      const padding = options.padding || 36;
-      const color = options.color || "#16baaa";
-
-      function theme() {
-        const t = (document.documentElement.getAttribute("data-theme") || "").toLowerCase();
-        return t === "dark" ? "dark" : "light";
-      }
-
-      function resolveColors() {
-        if (theme() === "dark") {
-          return {
-            grid: options.grid || "rgba(255,255,255,0.12)",
-            text: options.text || "rgba(255,255,255,0.65)",
-            bg: options.bg || "rgba(0,0,0,0)",
-          };
-        }
-        return {
-          grid: options.grid || "rgba(0,0,0,0.08)",
-          text: options.text || "rgba(0,0,0,0.55)",
-          bg: options.bg || "rgba(0,0,0,0)",
-        };
-      }
-
-      const ctx = canvas.getContext("2d");
-      function draw(points, formatter) {
-        const colors = resolveColors();
-        const w = canvas.width;
-        const h = canvas.height;
-        ctx.clearRect(0, 0, w, h);
-        ctx.fillStyle = colors.bg;
-        ctx.fillRect(0, 0, w, h);
-        if (!points || points.length < 2) {
-          ctx.fillStyle = colors.text;
-          ctx.font = "12px sans-serif";
-          ctx.fillText("暂无数据", padding, padding);
-          return;
-        }
-        let minY = Infinity, maxY = -Infinity;
-        for (const p of points) { if (p.y < minY) minY = p.y; if (p.y > maxY) maxY = p.y; }
-        if (!isFinite(minY) || !isFinite(maxY)) return;
-        if (minY === maxY) { maxY = minY + 1; }
-        const minX = points[0].x;
-        const maxX = points[points.length - 1].x;
-        const plotW = w - padding * 2;
-        const plotH = h - padding * 2;
-        const xToPx = (x) => padding + (x - minX) * plotW / Math.max(1, (maxX - minX));
-        const yToPx = (y) => padding + (maxY - y) * plotH / Math.max(1e-9, (maxY - minY));
-        ctx.strokeStyle = colors.grid;
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        for (let i = 0; i <= 4; i++) {
-          const y = padding + i * (plotH / 4);
-          ctx.moveTo(padding, y);
-          ctx.lineTo(w - padding, y);
-        }
-        ctx.stroke();
-        ctx.fillStyle = colors.text;
-        ctx.font = "12px sans-serif";
-        const fmt = formatter || ((v) => String(v));
-        ctx.fillText(fmt(maxY), 6, padding + 4);
-        ctx.fillText(fmt(minY), 6, h - padding + 4);
-        ctx.strokeStyle = color;
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.moveTo(xToPx(points[0].x), yToPx(points[0].y));
-        for (let i = 1; i < points.length; i++) ctx.lineTo(xToPx(points[i].x), yToPx(points[i].y));
-        ctx.stroke();
-        const last = points[points.length - 1];
-        ctx.fillStyle = color;
-        ctx.beginPath();
-        ctx.arc(xToPx(last.x), yToPx(last.y), 3, 0, Math.PI * 2);
-        ctx.fill();
-      }
-      return { draw };
-    }
-  }
-
   function initRealtimeCharts() {
     const intervalMs = 2000;
     const rtRule = document.getElementById("rtRule");
@@ -389,10 +308,11 @@
         errorStreak = 0;
         if (emptyBox) emptyBox.style.display = (d.runningJobs || 0) === 0 ? "" : "none";
         pointsSpeed.push({ x: d.ts, y: d.speedTotal || 0 });
+        const elRunning=document.getElementById("statRunning");if(elRunning)elRunning.textContent=d.globalRunningJobs ?? d.runningJobs ?? 0;
         
         // Update realtime stats text
         const elSpeed = document.getElementById("statSpeed");
-        if (elSpeed) elSpeed.innerText = humanSpeed(d.speedTotal || 0);
+        if (elSpeed) elSpeed.innerText = humanSpeed(d.globalSpeedTotal ?? d.speedTotal ?? 0);
         const elToday = document.getElementById("statToday");
         if (elToday) elToday.innerText = humanBytes(d.bytesToday || 0);
         const el24h = document.getElementById("stat24h");

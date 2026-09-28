@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"path"
 	"strconv"
 	"strings"
 	"time"
@@ -66,34 +67,38 @@ func (r *Remote) UnmarshalConfig() error {
 }
 
 type Rule struct {
-	ID              string
-	LimitGroup      string
-	SrcKind         string
-	SrcRemote       string
-	SrcPath         string
-	SrcLocalRoot    string
-	LocalWatch      bool
-	DstRemote       string
-	DstPath         string
-	TransferMode    string
-	RcloneExtraArgs string
-	ResumeEnabled   bool
-	PartialDir      string
-	PartialSuffix   string
-	IgnoreExtensions string
-	Bwlimit         string
-	DailyLimitBytes int64
-	MinFileSizeBytes int64
-	IsManual        bool
-	APIEnabled      bool
+	ID                   string
+	LimitGroup           string
+	SrcKind              string
+	SrcRemote            string
+	SrcPath              string
+	SrcLocalRoot         string
+	LocalWatch           bool
+	DstRemote            string
+	DstPath              string
+	TransferMode         string
+	GroupByDirectory     bool
+	AtomicPublish        bool
+	StagingPath          string
+	ReadyMarker          string
+	RcloneExtraArgs      string
+	ResumeEnabled        bool
+	PartialDir           string
+	PartialSuffix        string
+	IgnoreExtensions     string
+	Bwlimit              string
+	DailyLimitBytes      int64
+	MinFileSizeBytes     int64
+	IsManual             bool
+	APIEnabled           bool
 	APIAllowedOperations string
-	MaxParallelJobs int
-	ScanIntervalSec int
-	StableSeconds   int
-	BatchSize       int
-	Enabled         bool
-	CreatedAt       time.Time
-	UpdatedAt       time.Time
+	MaxParallelJobs      int
+	ScanIntervalSec      int
+	StableSeconds        int
+	BatchSize            int
+	Enabled              bool
+	CreatedAt            time.Time
+	UpdatedAt            time.Time
 }
 
 func (r *Rule) Normalize() error {
@@ -136,6 +141,42 @@ func (r *Rule) Normalize() error {
 	}
 	if r.ID == "" {
 		return errors.New("rule id required")
+	}
+	if r.ID == "." || r.ID == ".." || strings.ContainsAny(r.ID, "/\\:<>\"|?*\r\n\x00") {
+		return errors.New("规则 ID 不能包含路径分隔符、控制字符或文件名特殊字符")
+	}
+	for _, ch := range r.ID {
+		if unicode.IsControl(ch) {
+			return errors.New("规则 ID 不能包含控制字符")
+		}
+	}
+	r.ReadyMarker = strings.TrimSpace(r.ReadyMarker)
+	if strings.ContainsAny(r.ReadyMarker, "/\\\r\n\x00") || r.ReadyMarker == "." || r.ReadyMarker == ".." {
+		return errors.New("完成标记必须是影片目录内的文件名")
+	}
+	if r.AtomicPublish && !r.GroupByDirectory {
+		return errors.New("整目录发布需要启用按影片目录同步")
+	}
+	if r.AtomicPublish {
+		if r.DstPath == "/" {
+			return errors.New("整目录发布的正式目标不能是 remote 根目录，暂存区必须位于正式目标之外")
+		}
+		if strings.TrimSpace(r.StagingPath) == "" {
+			parent := r.DstPath[:strings.LastIndex(r.DstPath, "/")]
+			r.StagingPath = parent + "/.rclone-sync-staging/" + r.ID
+		}
+		r.StagingPath = cleanRemotePath(r.StagingPath)
+		if remotePathsOverlap(r.DstPath, r.StagingPath) {
+			return errors.New("暂存目录与正式目标目录不能互相包含")
+		}
+	}
+	if r.SrcKind == "remote" && r.SrcRemote == r.DstRemote {
+		if r.SrcPath == r.DstPath || strings.HasPrefix(r.DstPath+"/", r.SrcPath+"/") {
+			return errors.New("目标不能与源目录相同或位于源目录之内")
+		}
+		if r.AtomicPublish && remotePathsOverlap(r.SrcPath, r.StagingPath) {
+			return errors.New("暂存目录不能与源目录互相包含")
+		}
 	}
 	if r.SrcKind == "remote" {
 		if r.SrcRemote == "" {
@@ -240,10 +281,15 @@ func cleanRemotePath(p string) string {
 	if !strings.HasPrefix(p, "/") {
 		p = "/" + p
 	}
+	p = path.Clean(p)
 	if len(p) > 1 && strings.HasSuffix(p, "/") {
 		p = strings.TrimSuffix(p, "/")
 	}
 	return p
+}
+
+func remotePathsOverlap(a, b string) bool {
+	return a == b || strings.HasPrefix(a+"/", b+"/") || strings.HasPrefix(b+"/", a+"/")
 }
 
 func parseBool(s string) bool {

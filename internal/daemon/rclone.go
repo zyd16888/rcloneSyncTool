@@ -8,9 +8,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
+
 	"os/exec"
-	"path/filepath"
+
 	"strconv"
 	"strings"
 	"time"
@@ -19,6 +19,7 @@ import (
 )
 
 type lsjsonEntry struct {
+	ID      string `json:"ID"`
 	Path    string `json:"Path"`
 	Size    int64  `json:"Size"`
 	ModTime string `json:"ModTime"`
@@ -26,40 +27,46 @@ type lsjsonEntry struct {
 }
 
 func scanRule(ctx context.Context, rule store.Rule, settings store.RuntimeSettings) ([]store.ScanEntry, error) {
-	var src string
-	if rule.SrcKind == "local" {
-		src = rule.SrcLocalRoot
-	} else {
-		src = fmt.Sprintf("%s:%s", rule.SrcRemote, rule.SrcPath)
+	if err := ValidateRcloneArgs(rule.RcloneExtraArgs); err != nil {
+		return nil, err
 	}
-	args := []string{"lsjson", src, "--recursive", "--files-only"}
-	if strings.TrimSpace(settings.RcloneConfigPath) != "" {
-		args = append(args, "--config", settings.RcloneConfigPath)
-	}
-	cmd := exec.CommandContext(ctx, "rclone", args...)
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		msg := strings.TrimSpace(stderr.String())
-		if msg == "" {
-			msg = err.Error()
-		}
-		return nil, fmt.Errorf("rclone lsjson: %s", msg)
-	}
-
-	dec := json.NewDecoder(bytes.NewReader(stdout.Bytes()))
-	tok, err := dec.Token()
+	ctx, cancel := context.WithTimeout(ctx, settings.ScanTimeout)
+	defer cancel()
+	args := []string{"lsjson", sourceSpec(rule), "--recursive", "--files-only"}
+	extra, err := ParseRcloneArgs(rule.RcloneExtraArgs)
 	if err != nil {
 		return nil, err
 	}
-	delim, ok := tok.(json.Delim)
+	args = append(args, extra...)
+	if settings.RcloneConfigPath != "" {
+		args = append(args, "--config", settings.RcloneConfigPath)
+	}
+	cmd := exec.CommandContext(ctx, "rclone", args...)
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return nil, err
+	}
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if err := cmd.Start(); err != nil {
+		return nil, err
+	}
+	finished := false
+	defer func() {
+		if !finished {
+			_ = cmd.Process.Kill()
+			_ = cmd.Wait()
+		}
+	}()
+	dec := json.NewDecoder(stdout)
+	token, err := dec.Token()
+	if err != nil {
+		return nil, fmt.Errorf("rclone lsjson: %w", err)
+	}
+	delim, ok := token.(json.Delim)
 	if !ok || delim != '[' {
 		return nil, errors.New("unexpected lsjson output")
 	}
-
-	ignoreExts := store.ParseIgnoreExtensions(rule.IgnoreExtensions)
 	var out []store.ScanEntry
 	for dec.More() {
 		var e lsjsonEntry
@@ -69,38 +76,21 @@ func scanRule(ctx context.Context, rule store.Rule, settings store.RuntimeSettin
 		if e.IsDir || e.Path == "" {
 			continue
 		}
-		p := strings.TrimLeft(e.Path, "/\\")
-		p = strings.ReplaceAll(p, "\\", "/")
-		if p == "" {
-			continue
+		p := strings.ReplaceAll(e.Path, "\\", "/")
+		if !validRelativeFile(p) {
+			return nil, fmt.Errorf("源文件路径无法安全表示：%q", p)
 		}
-		if len(ignoreExts) > 0 {
-			lp := strings.ToLower(p)
-			ignored := false
-			for _, ext := range ignoreExts {
-				if strings.HasSuffix(lp, ext) {
-					ignored = true
-					break
-				}
-			}
-			if ignored {
-				continue
-			}
-		}
-		mt, err := time.Parse(time.RFC3339Nano, e.ModTime)
-		if err != nil {
-			mt, err = time.Parse(time.RFC3339, e.ModTime)
-		}
-		if err != nil {
-			mt = time.Now()
-		}
-		out = append(out, store.ScanEntry{
-			Path:    p,
-			Size:    e.Size,
-			ModTime: mt,
-		})
+		mt, _ := time.Parse(time.RFC3339Nano, e.ModTime)
+		out = append(out, store.ScanEntry{Path: p, Size: e.Size, ModTime: mt})
 	}
-	_, _ = dec.Token()
+	if _, err := dec.Token(); err != nil {
+		return nil, err
+	}
+	err = cmd.Wait()
+	finished = true
+	if err != nil {
+		return nil, fmt.Errorf("rclone lsjson: %s", redactMessage(strings.TrimSpace(stderr.String())))
+	}
 	return out, nil
 }
 
@@ -183,135 +173,6 @@ func toFloat64(v any) float64 {
 		return f
 	default:
 		return 0
-	}
-}
-
-type rcloneRunResult struct {
-	BytesDone int64
-	AvgSpeed  float64
-	Err       error
-}
-
-func runRcloneJob(ctx context.Context, rule store.Rule, settings store.RuntimeSettings, port int, filesFromPath, logPath string) rcloneRunResult {
-	var src string
-	if rule.SrcKind == "local" {
-		src = rule.SrcLocalRoot
-	} else {
-		src = fmt.Sprintf("%s:%s", rule.SrcRemote, rule.SrcPath)
-	}
-	dst := fmt.Sprintf("%s:%s", rule.DstRemote, rule.DstPath)
-
-	args := []string{
-		rule.TransferMode,
-		src, dst,
-		"--files-from-raw", filesFromPath,
-		"--stats", "0",
-		"--rc",
-		"--rc-no-auth",
-		"--rc-addr", fmt.Sprintf("127.0.0.1:%d", port),
-		"--log-file", logPath,
-		"--log-level", "INFO",
-		fmt.Sprintf("--transfers=%d", settings.Transfers),
-		fmt.Sprintf("--checkers=%d", settings.Checkers),
-	}
-	if strings.TrimSpace(settings.RcloneConfigPath) != "" {
-		args = append(args, "--config", settings.RcloneConfigPath)
-	}
-	if settings.BufferSize != "" {
-		args = append(args, "--buffer-size", settings.BufferSize)
-	}
-	if settings.DriveChunkSize != "" {
-		args = append(args, "--drive-chunk-size", settings.DriveChunkSize)
-	}
-	effectiveBwlimit := strings.TrimSpace(rule.Bwlimit)
-	if effectiveBwlimit == "" {
-		effectiveBwlimit = strings.TrimSpace(settings.Bwlimit)
-	}
-	if effectiveBwlimit != "" {
-		args = append(args, "--bwlimit", effectiveBwlimit)
-	}
-	if rule.ResumeEnabled {
-		args = append(args, "--partial")
-		if strings.TrimSpace(rule.PartialDir) != "" {
-			args = append(args, "--partial-dir", rule.PartialDir)
-		}
-		if strings.TrimSpace(rule.PartialSuffix) != "" {
-			args = append(args, "--partial-suffix", rule.PartialSuffix)
-		}
-	}
-	if strings.TrimSpace(rule.RcloneExtraArgs) != "" {
-		parsed, err := ParseRcloneArgs(rule.RcloneExtraArgs)
-		if err != nil {
-			return rcloneRunResult{Err: err}
-		}
-		san := SanitizeRcloneArgs(parsed)
-		if strings.TrimSpace(filesFromPath) != "" {
-			san = SanitizeRcloneFilterArgs(san.Args)
-		}
-		args = append(args, san.Args...)
-	}
-
-	_ = os.MkdirAll(filepath.Dir(logPath), 0o755)
-
-	cmd := exec.CommandContext(ctx, "rclone", args...)
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-	if err := cmd.Start(); err != nil {
-		return rcloneRunResult{Err: err}
-	}
-
-	start := time.Now()
-	var last rcStats
-	var lastErr error
-	readyDeadline := time.NewTimer(10 * time.Second)
-	tick := time.NewTicker(settings.MetricsInterval)
-	defer readyDeadline.Stop()
-	defer tick.Stop()
-
-	ready := false
-	for !ready {
-		select {
-		case <-ctx.Done():
-			_ = cmd.Process.Kill()
-			_ = cmd.Wait()
-			return rcloneRunResult{Err: ctx.Err()}
-		case <-readyDeadline.C:
-			ready = true
-		case <-time.After(200 * time.Millisecond):
-			s, err := pollRC(ctx, port)
-			if err == nil {
-				last = s
-				ready = true
-			}
-		}
-	}
-
-	done := make(chan error, 1)
-	go func() { done <- cmd.Wait() }()
-
-	for {
-		select {
-		case <-ctx.Done():
-			_ = cmd.Process.Kill()
-			_ = <-done
-			return rcloneRunResult{BytesDone: last.Bytes, AvgSpeed: avgSpeed(last.Bytes, start), Err: ctx.Err()}
-		case err := <-done:
-			if err != nil {
-				msg := strings.TrimSpace(stderr.String())
-				if msg == "" {
-					msg = err.Error()
-				}
-				return rcloneRunResult{BytesDone: last.Bytes, AvgSpeed: avgSpeed(last.Bytes, start), Err: errors.New(msg)}
-			}
-			return rcloneRunResult{BytesDone: last.Bytes, AvgSpeed: avgSpeed(last.Bytes, start), Err: lastErr}
-		case <-tick.C:
-			s, err := pollRC(ctx, port)
-			if err != nil {
-				lastErr = err
-				continue
-			}
-			last = s
-		}
 	}
 }
 

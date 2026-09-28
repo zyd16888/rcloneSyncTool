@@ -96,9 +96,7 @@ func main() {
 	}
 
 	supervisor := daemon.NewSupervisor(st)
-	go supervisor.Run(ctx)
-	go supervisor.StartTransferQueue(ctx)
-	go supervisor.StartCallbackQueue(ctx)
+	supervisor.Start(ctx)
 	go daemon.StartLogJanitor(ctx, st)
 
 	handler := server.New(st, supervisor, logDir, appLogPath)
@@ -129,6 +127,7 @@ func main() {
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer shutdownCancel()
 	_ = srv.Shutdown(shutdownCtx)
+	supervisor.Wait()
 }
 
 func runPasswd(args []string) {

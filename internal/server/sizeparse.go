@@ -44,17 +44,17 @@ func parseSizeBytes(s string) (int64, error) {
 	case strings.HasSuffix(s, "EIB"):
 		unit = "EIB"
 	case strings.HasSuffix(s, "KB"):
-		unit = "K"
+		unit = "KB"
 	case strings.HasSuffix(s, "MB"):
-		unit = "M"
+		unit = "MB"
 	case strings.HasSuffix(s, "GB"):
-		unit = "G"
+		unit = "GB"
 	case strings.HasSuffix(s, "TB"):
-		unit = "T"
+		unit = "TB"
 	case strings.HasSuffix(s, "PB"):
-		unit = "P"
+		unit = "PB"
 	case strings.HasSuffix(s, "EB"):
-		unit = "E"
+		unit = "EB"
 	default:
 		if len(s) > 0 {
 			last := s[len(s)-1]
@@ -66,17 +66,17 @@ func parseSizeBytes(s string) (int64, error) {
 	switch unit {
 	case "":
 		mult = 1
-	case "K", "KIB":
+	case "K", "KB", "KIB":
 		mult = 1024
-	case "M", "MIB":
+	case "M", "MB", "MIB":
 		mult = 1024 * 1024
-	case "G", "GIB":
+	case "G", "GB", "GIB":
 		mult = 1024 * 1024 * 1024
-	case "T", "TIB":
+	case "T", "TB", "TIB":
 		mult = 1024 * 1024 * 1024 * 1024
-	case "P", "PIB":
+	case "P", "PB", "PIB":
 		mult = 1024 * 1024 * 1024 * 1024 * 1024
-	case "E", "EIB":
+	case "E", "EB", "EIB":
 		mult = 1024 * 1024 * 1024 * 1024 * 1024 * 1024
 	default:
 		return 0, errors.New("invalid size unit")

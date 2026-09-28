@@ -13,6 +13,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"115togd/internal/daemon"
 	"115togd/internal/store"
 )
 
@@ -34,10 +35,15 @@ func (s *Server) apiJobLogStream(c *gin.Context) {
 		return
 	}
 
-	streamFileSSE(c, logPath, 200, 1<<20, func() bool { return jobEnded(job) })
+	streamFileSSE(c, logPath, 200, 1<<20, func() bool {
+		current, ok, err := s.st.GetJob(ctx, jobID)
+		return err == nil && (!ok || jobEnded(current))
+	})
 }
 
-func jobEnded(j store.Job) bool { return j.Status == "done" || j.Status == "failed" }
+func jobEnded(j store.Job) bool {
+	return j.Status == "done" || j.Status == "failed" || j.Status == "terminated"
+}
 
 func (s *Server) apiDaemonLogStream(c *gin.Context) {
 	logPath := s.appLogPath
@@ -80,6 +86,11 @@ func streamFileSSE(c *gin.Context, logPath string, tailLines int, maxTailBytes i
 			break
 		}
 		if time.Now().After(deadline) {
+			if shouldClose != nil && shouldClose() {
+				_ = writeSSE(c.Writer, "done", "")
+				flusher.Flush()
+				return
+			}
 			_ = writeSSE(c.Writer, "log", fmt.Sprintf("日志文件无法打开：%s", filepath.Base(logPath)))
 			flusher.Flush()
 			return
@@ -187,6 +198,9 @@ func tailLastLines(f *os.File, lines int, maxBytes int64) (string, error) {
 }
 
 func writeSSE(w io.Writer, event, data string) error {
+	if event == "log" {
+		data = daemon.RedactLog(data)
+	}
 	bw := bufio.NewWriter(w)
 	if event != "" {
 		if _, err := bw.WriteString("event: " + event + "\n"); err != nil {

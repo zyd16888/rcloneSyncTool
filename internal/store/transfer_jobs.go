@@ -14,6 +14,9 @@ import (
 // working, but they never claim rows from the scanner file queue.
 const OriginAPI = "api"
 
+const OriginScheduler = "scheduler"
+const OriginManual = "manual"
+
 // Transfer job lifecycle. blocked is the one state the scheduler-driven path
 // does not have: an API caller must be able to see that work is deferred by a
 // quota instead of watching a job sit in pending forever.
@@ -59,6 +62,14 @@ type TransferJob struct {
 	EndedAt          time.Time
 	CreatedAt        time.Time
 	UpdatedAt        time.Time
+	Phase            string
+	QuotaGroup       string
+	GroupKey         string
+	StagePath        string
+	RetryOf          string
+	ReservedBytes    int64
+	Prepared         bool
+	RcPort           int
 }
 
 func (j TransferJob) Terminal() bool {
@@ -71,11 +82,14 @@ func (j TransferJob) Terminal() bool {
 
 // TransferJobFile is one entry of the job manifest.
 type TransferJobFile struct {
-	JobID     string
-	Path      string
-	Size      int64
-	State     string
-	LastError string
+	JobID      string
+	Path       string
+	Size       int64
+	State      string
+	LastError  string
+	ModTime    string
+	GroupKey   string
+	SourcePath string
 }
 
 const transferJobColumns = `job_id, rule_id, COALESCE(origin,''), transfer_mode, status,
@@ -83,11 +97,13 @@ COALESCE(block_reason,''), COALESCE(external_id,''), COALESCE(idempotency_key,''
 COALESCE(request_fingerprint,''), COALESCE(request_snapshot,''), COALESCE(result_snapshot,''),
 COALESCE(callback_url,''), COALESCE(callback_state,''), COALESCE(callback_attempts,0),
 COALESCE(callback_next_at,0), bytes_done, avg_speed, error, log_path,
-started_at, ended_at, COALESCE(created_at,0), COALESCE(updated_at,0)`
+started_at, ended_at, COALESCE(created_at,0), COALESCE(updated_at,0),
+phase, COALESCE(quota_group,''), group_key, stage_path, retry_of, reserved_bytes, prepared, rc_port`
 
 func scanTransferJob(scan func(dest ...any) error) (TransferJob, error) {
 	var j TransferJob
 	var started, ended, created, updated, callbackNextAt int64
+	var prepared int
 	err := scan(
 		&j.JobID, &j.RuleID, &j.Origin, &j.TransferMode, &j.Status,
 		&j.BlockReason, &j.ExternalID, &j.IdempotencyKey,
@@ -95,11 +111,15 @@ func scanTransferJob(scan func(dest ...any) error) (TransferJob, error) {
 		&j.CallbackURL, &j.CallbackState, &j.CallbackAttempts, &callbackNextAt,
 		&j.BytesDone, &j.AvgSpeed, &j.Error, &j.LogPath,
 		&started, &ended, &created, &updated,
+		&j.Phase, &j.QuotaGroup, &j.GroupKey, &j.StagePath, &j.RetryOf, &j.ReservedBytes, &prepared, &j.RcPort,
 	)
 	if err != nil {
 		return TransferJob{}, err
 	}
-	j.StartedAt = time.Unix(started, 0)
+	j.Prepared = prepared != 0
+	if started > 0 {
+		j.StartedAt = time.Unix(started, 0)
+	}
 	if ended != 0 {
 		j.EndedAt = time.Unix(ended, 0)
 	}
@@ -126,23 +146,26 @@ func (s *Store) CreateTransferJob(ctx context.Context, job TransferJob, files []
 	defer func() { _ = tx.Rollback() }()
 
 	now := nowUnix()
+	if job.Origin == "" {
+		job.Origin = OriginAPI
+	}
 	if _, err := tx.ExecContext(ctx, `
 INSERT INTO jobs(job_id, rule_id, origin, transfer_mode, rc_port, started_at, status,
   log_path, external_id, idempotency_key, request_fingerprint, request_snapshot,
-  callback_url, created_at, updated_at)
-VALUES(?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  callback_url, created_at, updated_at, quota_group, group_key, phase, stage_path, retry_of, prepared)
+VALUES(?, ?, ?, ?, 0, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `,
-		job.JobID, job.RuleID, OriginAPI, job.TransferMode, now, TransferStatusPending,
+		job.JobID, job.RuleID, job.Origin, job.TransferMode, TransferStatusPending,
 		job.LogPath, job.ExternalID, job.IdempotencyKey, job.Fingerprint, job.RequestJSON,
-		job.CallbackURL, now, now,
+		job.CallbackURL, now, now, job.QuotaGroup, job.GroupKey, job.Phase, job.StagePath, job.RetryOf, boolToInt(job.Prepared),
 	); err != nil {
 		return err
 	}
 
 	if len(files) > 0 {
 		stmt, err := tx.PrepareContext(ctx, `
-INSERT INTO transfer_job_files(job_id, path, size, state, last_error)
-VALUES(?, ?, ?, 'pending', '')
+INSERT INTO transfer_job_files(job_id, path, size, state, last_error, mod_time, group_key, source_path)
+VALUES(?, ?, ?, 'pending', '', ?, ?, ?)
 ON CONFLICT(job_id, path) DO NOTHING
 `)
 		if err != nil {
@@ -150,7 +173,7 @@ ON CONFLICT(job_id, path) DO NOTHING
 		}
 		defer stmt.Close()
 		for _, f := range files {
-			if _, err := stmt.ExecContext(ctx, job.JobID, f.Path, f.Size); err != nil {
+			if _, err := stmt.ExecContext(ctx, job.JobID, f.Path, f.Size, f.ModTime, f.GroupKey, f.SourcePath); err != nil {
 				return err
 			}
 		}
@@ -213,10 +236,10 @@ func (s *Store) ClaimableTransferJobs(ctx context.Context, limit int) ([]Transfe
 	rows, err := s.db.QueryContext(ctx, `
 SELECT `+transferJobColumns+`
 FROM jobs
-WHERE origin=? AND status IN (?, ?)
-ORDER BY created_at ASC, job_id ASC
+WHERE status IN (?, ?) AND queue_next_at<=?
+ORDER BY queue_next_at ASC, created_at ASC, job_id ASC
 LIMIT ?
-`, OriginAPI, TransferStatusPending, TransferStatusBlocked, limit)
+`, TransferStatusPending, TransferStatusBlocked, nowUnix(), limit)
 	if err != nil {
 		return nil, err
 	}
@@ -251,9 +274,9 @@ WHERE job_id=? AND status IN (?, ?)
 func (s *Store) BlockTransferJob(ctx context.Context, jobID, reason, message string) error {
 	_, err := s.db.ExecContext(ctx, `
 UPDATE jobs
-SET status=?, block_reason=?, error=?, updated_at=?
+SET status=?, block_reason=?, error=?, updated_at=?, queue_next_at=?
 WHERE job_id=? AND status IN (?, ?)
-`, TransferStatusBlocked, reason, message, nowUnix(), jobID, TransferStatusPending, TransferStatusBlocked)
+`, TransferStatusBlocked, reason, message, nowUnix(), nowUnix()+10, jobID, TransferStatusPending, TransferStatusBlocked)
 	return err
 }
 
@@ -304,7 +327,11 @@ func (s *Store) CallbackSecret(ctx context.Context) (string, error) {
 }
 
 func (s *Store) SetCallbackSecret(ctx context.Context, secret string) error {
-	return s.SetSetting(ctx, CallbackSecretKey, strings.TrimSpace(secret))
+	if err := s.SetSetting(ctx, CallbackSecretKey, strings.TrimSpace(secret)); err != nil {
+		return err
+	}
+	_, err := s.db.ExecContext(ctx, `UPDATE jobs SET callback_next_at=0 WHERE callback_state='unconfigured'`)
+	return err
 }
 
 // DueCallbackJobs lists terminal API jobs whose client has not been notified
@@ -378,8 +405,8 @@ func (s *Store) ReplaceTransferJobFiles(ctx context.Context, jobID string, files
 		return err
 	}
 	stmt, err := tx.PrepareContext(ctx, `
-INSERT INTO transfer_job_files(job_id, path, size, state, last_error)
-VALUES(?, ?, ?, ?, ?)
+INSERT INTO transfer_job_files(job_id, path, size, state, last_error, mod_time, group_key, source_path)
+VALUES(?, ?, ?, ?, ?, ?, ?, ?)
 `)
 	if err != nil {
 		return err
@@ -390,7 +417,7 @@ VALUES(?, ?, ?, ?, ?)
 		if state == "" {
 			state = "pending"
 		}
-		if _, err := stmt.ExecContext(ctx, jobID, f.Path, f.Size, state, f.LastError); err != nil {
+		if _, err := stmt.ExecContext(ctx, jobID, f.Path, f.Size, state, f.LastError, f.ModTime, f.GroupKey, f.SourcePath); err != nil {
 			return err
 		}
 	}
@@ -451,7 +478,7 @@ func (s *Store) ListTransferJobFiles(
 		limit = 200
 	}
 	rows, err := s.db.QueryContext(ctx, `
-SELECT job_id, path, size, state, last_error
+SELECT job_id, path, size, state, last_error, mod_time, group_key, source_path
 FROM transfer_job_files
 WHERE job_id=? AND path > ?
 ORDER BY path ASC
@@ -464,7 +491,7 @@ LIMIT ?
 	var out []TransferJobFile
 	for rows.Next() {
 		var f TransferJobFile
-		if err := rows.Scan(&f.JobID, &f.Path, &f.Size, &f.State, &f.LastError); err != nil {
+		if err := rows.Scan(&f.JobID, &f.Path, &f.Size, &f.State, &f.LastError, &f.ModTime, &f.GroupKey, &f.SourcePath); err != nil {
 			return nil, err
 		}
 		out = append(out, f)

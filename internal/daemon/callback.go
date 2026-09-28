@@ -9,7 +9,9 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
 	"115togd/internal/store"
@@ -80,8 +82,28 @@ func (s *Supervisor) deliverCallback(ctx context.Context, job store.TransferJob)
 		// Without a shared secret the receiver cannot verify anything, so an
 		// unsigned request would be worse than no request at all.
 		_ = s.st.RecordCallbackAttempt(ctx, job.JobID, "unconfigured",
-			job.CallbackAttempts+1, time.Time{})
+			job.CallbackAttempts, time.Now().Add(30*time.Second))
 		return
+	}
+	claimed, ok, err := s.st.ClaimCallback(ctx, job.JobID, callbackMaxAttempts)
+	if err != nil || !ok {
+		return
+	}
+	job = claimed
+	if allowed, _, _ := s.st.Setting(ctx, "callback_allowed_hosts"); strings.TrimSpace(allowed) != "" {
+		u, err := url.Parse(job.CallbackURL)
+		accepted := false
+		if err == nil {
+			for _, host := range strings.FieldsFunc(allowed, func(r rune) bool { return r == ',' || r == ' ' || r == '\n' }) {
+				if strings.EqualFold(strings.TrimSpace(host), u.Host) || strings.EqualFold(strings.TrimSpace(host), u.Hostname()) {
+					accepted = true
+				}
+			}
+		}
+		if !accepted {
+			_ = s.st.RecordCallbackAttempt(ctx, job.JobID, "invalid_url", job.CallbackAttempts, time.Time{})
+			return
+		}
 	}
 	counts, err := s.st.TransferJobFileCounts(ctx, job.JobID)
 	if err != nil {
@@ -108,7 +130,7 @@ func (s *Supervisor) deliverCallback(ctx context.Context, job store.TransferJob)
 		return
 	}
 
-	attempts := job.CallbackAttempts + 1
+	attempts := job.CallbackAttempts
 	timestamp := strconv.FormatInt(time.Now().Unix(), 10)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, job.CallbackURL, bytes.NewReader(body))
 	if err != nil {
@@ -120,7 +142,7 @@ func (s *Supervisor) deliverCallback(ctx context.Context, job store.TransferJob)
 	req.Header.Set(HeaderCallbackDeliver, payload.DeliveryID)
 	req.Header.Set(HeaderCallbackSign, callbackSignatureVer+"="+SignCallback(secret, timestamp, body))
 
-	client := &http.Client{Timeout: callbackTimeout}
+	client := &http.Client{Timeout: callbackTimeout, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	resp, err := client.Do(req)
 	if err == nil {
 		defer resp.Body.Close()
@@ -143,7 +165,7 @@ func (s *Supervisor) deliverCallback(ctx context.Context, job store.TransferJob)
 // callbackBackoff spreads retries from seconds to minutes so a receiver that is
 // restarting is not hammered while it comes back up.
 func callbackBackoff(attempts int) time.Time {
-	seconds := 5 << uint(max(0, attempts-1))
+	seconds := 5 << uint(maxInt(0, attempts-1))
 	if seconds > 300 {
 		seconds = 300
 	}
@@ -161,7 +183,7 @@ func SignCallback(secret, timestamp string, body []byte) string {
 	return hex.EncodeToString(mac.Sum(nil))
 }
 
-func max(a, b int) int {
+func maxInt(a, b int) int {
 	if a > b {
 		return a
 	}

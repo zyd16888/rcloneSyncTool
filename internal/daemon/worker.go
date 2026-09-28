@@ -1,66 +1,46 @@
 package daemon
 
 import (
+	"115togd/internal/store"
 	"context"
-	"errors"
 	"fmt"
+	"github.com/fsnotify/fsnotify"
 	"io/fs"
 	"log"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
 	"sync/atomic"
-	"syscall"
 	"time"
-
-	"github.com/fsnotify/fsnotify"
-
-	"115togd/internal/store"
 )
 
 type ruleWorker struct {
-	st   *store.Store
-	rule store.Rule
-
-	pm *PortManager
-	gl *GlobalLimiter
-	jr *JobRegistry
-
-	sem chan struct{}
-
-	scanCh chan struct{}
-	stopCh chan struct{}
-	stopped atomic.Bool
-
-	cancelMu sync.Mutex
-	cancel   context.CancelFunc
+	st              *store.Store
+	rule            store.Rule
+	pm              *PortManager
+	gl              *GlobalLimiter
+	jr              *JobRegistry
+	scanCh          chan struct{}
+	stopCh          chan struct{}
+	stopped         atomic.Bool
+	cancelMu        sync.Mutex
+	cancel          context.CancelFunc
+	checkedExisting bool
 }
 
 func newRuleWorker(st *store.Store, rule store.Rule, pm *PortManager, gl *GlobalLimiter, jr *JobRegistry) *ruleWorker {
-	return &ruleWorker{
-		st:     st,
-		rule:   rule,
-		pm:     pm,
-		gl:     gl,
-		jr:     jr,
-		scanCh: make(chan struct{}, 1),
-		stopCh: make(chan struct{}),
-		sem:    make(chan struct{}, rule.MaxParallelJobs),
-	}
+	return &ruleWorker{st: st, rule: rule, pm: pm, gl: gl, jr: jr, scanCh: make(chan struct{}, 1), stopCh: make(chan struct{})}
 }
-
 func (w *ruleWorker) setCancel(cancel context.CancelFunc) {
 	w.cancelMu.Lock()
 	w.cancel = cancel
 	stopped := w.stopped.Load()
 	w.cancelMu.Unlock()
-	if stopped && cancel != nil {
+	if stopped {
 		cancel()
 	}
 }
-
 func (w *ruleWorker) stop() {
 	if w.stopped.CompareAndSwap(false, true) {
 		close(w.stopCh)
@@ -72,305 +52,177 @@ func (w *ruleWorker) stop() {
 		cancel()
 	}
 }
-
 func (w *ruleWorker) triggerScan() {
 	select {
 	case w.scanCh <- struct{}{}:
 	default:
 	}
 }
-
-func (w *ruleWorker) run(ctx context.Context) {
-	scanCtx, scanCancel := context.WithCancel(ctx)
-	defer scanCancel()
-	w.setCancel(scanCancel)
-
-	settings, err := w.st.RuntimeSettings(scanCtx)
-	if err != nil {
-		log.Printf("rule %s: load settings: %v", w.rule.ID, err)
-		return
-	}
-
-	scanTicker := time.NewTicker(time.Duration(w.rule.ScanIntervalSec) * time.Second)
-	defer scanTicker.Stop()
-	schedTicker := time.NewTicker(settings.SchedulerTick)
-	defer schedTicker.Stop()
-
+func (w *ruleWorker) run(root context.Context) {
+	ctx, cancel := context.WithCancel(root)
+	defer cancel()
+	w.setCancel(cancel)
+	var scans sync.WaitGroup
+	scans.Add(1)
+	go func() { defer scans.Done(); w.scanLoop(ctx) }()
+	defer func() { cancel(); scans.Wait() }()
 	if w.rule.SrcKind == "local" && w.rule.LocalWatch {
-		go w.watchLocal(scanCtx)
+		scans.Add(1)
+		go func() { defer scans.Done(); w.watchLocal(ctx) }()
 	}
-
-	// Prime: run a scan soon.
-	w.triggerScan()
-
-	for {
-		select {
-		case <-scanCtx.Done():
-			return
-		case <-w.stopCh:
-			scanCancel()
-			return
-		case <-scanTicker.C:
-			w.doScan(scanCtx)
-		case <-w.scanCh:
-			w.doScan(scanCtx)
-		case <-schedTicker.C:
-			w.doSchedule(scanCtx, ctx)
-		}
-	}
-}
-
-func (w *ruleWorker) doScan(ctx context.Context) {
 	settings, err := w.st.RuntimeSettings(ctx)
 	if err != nil {
 		log.Printf("rule %s: settings: %v", w.rule.ID, err)
 		return
 	}
-	entries, err := scanRule(ctx, w.rule, settings)
-	if err != nil {
-		log.Printf("rule %s: scan: %v", w.rule.ID, err)
-		return
-	}
-	if err := w.st.UpsertScanEntries(ctx, w.rule, entries); err != nil {
-		log.Printf("rule %s: upsert scan: %v", w.rule.ID, err)
-		return
-	}
-	if _, err := w.st.EnqueueStable(ctx, w.rule.ID, w.rule.BatchSize, w.rule.MinFileSizeBytes); err != nil {
-		log.Printf("rule %s: enqueue stable: %v", w.rule.ID, err)
-	}
-}
-
-func (w *ruleWorker) doSchedule(scanCtx context.Context, jobCtx context.Context) {
-	// keep queue warm
-	if _, err := w.st.EnqueueStable(scanCtx, w.rule.ID, w.rule.BatchSize, w.rule.MinFileSizeBytes); err != nil {
-		log.Printf("rule %s: enqueue stable: %v", w.rule.ID, err)
-	}
+	ticker := time.NewTicker(settings.SchedulerTick)
+	defer ticker.Stop()
 	for {
 		select {
-		case <-scanCtx.Done():
+		case <-ctx.Done():
 			return
-		case w.sem <- struct{}{}:
-			go w.startOneJob(scanCtx, jobCtx)
-			continue
-		default:
+		case <-w.stopCh:
 			return
+		case <-ticker.C:
+			w.plan(ctx)
+			if updated, e := w.st.RuntimeSettings(ctx); e == nil && updated.SchedulerTick != settings.SchedulerTick {
+				settings = updated
+				ticker.Reset(settings.SchedulerTick)
+			}
 		}
 	}
 }
-
-func (w *ruleWorker) startOneJob(scanCtx context.Context, jobCtx context.Context) {
-	defer func() { <-w.sem }()
-
-	if w.stopped.Load() || scanCtx.Err() != nil {
-		return
-	}
-
-	settings, err := w.st.RuntimeSettings(scanCtx)
-	if err != nil {
-		log.Printf("rule %s: settings: %v", w.rule.ID, err)
-		return
-	}
-	if !w.st.HasQueued(scanCtx, w.rule.ID) {
-		return
-	}
-
-	limitBytes := w.rule.DailyLimitBytes
-	budgetFn := func() (int64, error) {
-		return w.st.RuleBudgetSince(scanCtx, w.rule.ID, time.Now().Add(-24*time.Hour))
-	}
-	// If grouped, use group logic
-	if w.rule.LimitGroup != "" {
-		lg, ok, err := w.st.GetLimitGroup(scanCtx, w.rule.LimitGroup)
-		if err != nil {
-			log.Printf("rule %s: get limit group: %v", w.rule.ID, err)
+func (w *ruleWorker) scanLoop(ctx context.Context) {
+	ticker := time.NewTicker(time.Duration(w.rule.ScanIntervalSec) * time.Second)
+	defer ticker.Stop()
+	w.triggerScan()
+	for {
+		select {
+		case <-ctx.Done():
 			return
-		}
-		if ok {
-			limitBytes = lg.DailyLimitBytes
-		} else {
-			// Group not found? fallback to rule's limit or 0?
-			// Let's assume 0 (unlimited) or log warning.
-			// Ideally the UI prevents selecting non-existent groups, but user can delete group.
-			limitBytes = 0
-		}
-
-		budgetFn = func() (int64, error) {
-			return w.st.GroupBudgetSince(scanCtx, w.rule.LimitGroup, time.Now().Add(-24*time.Hour))
+		case <-ticker.C:
+			w.doScan(ctx)
+		case <-w.scanCh:
+			w.doScan(ctx)
 		}
 	}
-
-	if limitBytes > 0 {
-		usage, err := budgetFn()
-		if err != nil {
-			log.Printf("rule %s: check budget usage: %v", w.rule.ID, err)
-		} else if usage >= limitBytes {
-			// Limit reached.
-			return
-		}
-	}
-
-	if w.gl != nil {
-		if ok := w.gl.Acquire(scanCtx); !ok {
-			return
-		}
-		defer w.gl.Release()
-	}
-	port, err := w.pm.Acquire()
-	if err != nil {
-		log.Printf("rule %s: rc port: %v", w.rule.ID, err)
+}
+func (w *ruleWorker) doScan(ctx context.Context) {
+	if err := w.st.StartRuleScan(ctx, w.rule.ID); err != nil {
 		return
 	}
-	defer w.pm.Release(port)
-
-	jobID := newID()
-	paths, err := w.st.ClaimQueuedForJob(scanCtx, w.rule, jobID, w.rule.BatchSize)
-	if err != nil {
-		log.Printf("rule %s: claim queued: %v", w.rule.ID, err)
-		return
-	}
-	if len(paths) == 0 {
-		return
-	}
-
-	// Pre-check limit with estimated size.
-	// Budget usage includes in-flight transferring file sizes, which prevents concurrent jobs
-	// in the same group from collectively exceeding quota.
-	if limitBytes > 0 {
-		jobSize, err := w.st.GetJobFilesSize(jobCtx, jobID)
+	settings, err := w.st.RuntimeSettings(ctx)
+	var stats store.ScanStats
+	if err == nil {
+		var entries []store.ScanEntry
+		entries, err = scanRule(ctx, w.rule, settings)
 		if err == nil {
-			currentBudget, _ := budgetFn()
-			if currentBudget > limitBytes {
-				log.Printf("rule %s: daily limit exceeded (budget: %d, job: %d, limit: %d), skipping job %s",
-					w.rule.ID, currentBudget, jobSize, limitBytes, jobID)
-				_ = w.st.ReleaseTransferringBackToQueued(jobCtx, jobID)
-				return
-			}
-		} else {
-			log.Printf("rule %s: check job size: %v", w.rule.ID, err)
-		}
-	}
-
-	log.Printf("[Worker] Job %s (Rule: %s) starting with %d files", jobID, w.rule.ID, len(paths))
-	if w.stopped.Load() || scanCtx.Err() != nil {
-		_ = w.st.ReleaseTransferringBackToQueued(jobCtx, jobID)
-		return
-	}
-
-	baseDir := filepath.Dir(settings.LogDir)
-	jobDir := filepath.Join(baseDir, "jobs", w.rule.ID, jobID)
-	if err := os.MkdirAll(jobDir, 0o755); err != nil {
-		log.Printf("rule %s: mkdir job dir: %v", w.rule.ID, err)
-		_ = w.st.ReleaseTransferringBackToQueued(jobCtx, jobID)
-		return
-	}
-
-	filesFrom := filepath.Join(jobDir, "files.txt")
-	if err := os.WriteFile(filesFrom, []byte(strings.Join(paths, "\n")+"\n"), 0o600); err != nil {
-		log.Printf("rule %s: write files-from: %v", w.rule.ID, err)
-		_ = w.st.ReleaseTransferringBackToQueued(jobCtx, jobID)
-		return
-	}
-
-	if w.stopped.Load() || scanCtx.Err() != nil {
-		_ = w.st.ReleaseTransferringBackToQueued(jobCtx, jobID)
-		return
-	}
-
-	logPath := filepath.Join(settings.LogDir, w.rule.ID, jobID+".log")
-	j := store.Job{
-		JobID:        jobID,
-		RuleID:       w.rule.ID,
-		TransferMode: w.rule.TransferMode,
-		RcPort:       port,
-		StartedAt:    time.Now(),
-		LogPath:      logPath,
-	}
-	if err := w.st.CreateJobRow(jobCtx, j); err != nil {
-		log.Printf("rule %s: create job: %v", w.rule.ID, err)
-		_ = w.st.ReleaseTransferringBackToQueued(jobCtx, jobID)
-		return
-	}
-
-	if w.stopped.Load() || scanCtx.Err() != nil {
-		_ = w.st.UpdateJobTerminated(jobCtx, jobID, "rule disabled", 0, 0)
-		_ = w.st.ReleaseTransferringBackToQueued(jobCtx, jobID)
-		return
-	}
-
-	jobCtx, cancel := context.WithCancel(jobCtx)
-	defer cancel()
-
-	res := w.runWithMetrics(jobCtx, settings, port, filesFrom, logPath, jobID)
-	if res.Err != nil {
-		if errors.Is(res.Err, errTerminatedByUser) {
-			_ = w.st.UpdateJobTerminated(jobCtx, jobID, "terminated by user", res.BytesDone, res.AvgSpeed)
-			doneSet, _ := transferredPathsFromLog(logPath)
-			var donePaths []string
-			for _, p := range paths {
-				if _, ok := doneSet[p]; ok {
-					donePaths = append(donePaths, p)
+			stats, err = w.st.ApplyScan(ctx, w.rule, entries)
+			if err == nil && !w.checkedExisting {
+				err = w.reconcileExisting(ctx, settings)
+				if err == nil {
+					w.checkedExisting = true
 				}
 			}
-			_ = w.st.FinalizeJobFiles(jobCtx, jobID, donePaths, "queued", "")
-			_ = w.st.ClearJobOnDone(jobCtx, jobID)
-			return
 		}
-		if errors.Is(res.Err, errTerminatedBySignal) || errors.Is(res.Err, context.Canceled) {
-			_ = w.st.UpdateJobTerminated(jobCtx, jobID, "terminated", res.BytesDone, res.AvgSpeed)
-			doneSet, _ := transferredPathsFromLog(logPath)
-			var donePaths []string
-			for _, p := range paths {
-				if _, ok := doneSet[p]; ok {
-					donePaths = append(donePaths, p)
-				}
-			}
-			_ = w.st.FinalizeJobFiles(jobCtx, jobID, donePaths, "queued", "")
-			_ = w.st.ClearJobOnDone(jobCtx, jobID)
-			return
-		}
-		_ = w.st.UpdateJobFailed(jobCtx, jobID, res.Err.Error(), res.BytesDone, res.AvgSpeed)
-		doneSet, _ := transferredPathsFromLog(logPath)
-		var donePaths []string
-		for _, p := range paths {
-			if _, ok := doneSet[p]; ok {
-				donePaths = append(donePaths, p)
-			}
-		}
-		_ = w.st.FinalizeJobFiles(jobCtx, jobID, donePaths, "failed", res.Err.Error())
-		_ = w.st.ClearJobOnDone(jobCtx, jobID)
-		return
 	}
-	doneSet, err := transferredPathsFromLog(logPath)
+	message := ""
 	if err != nil {
-		_ = w.st.UpdateJobFailed(jobCtx, jobID, "log parse: "+err.Error(), res.BytesDone, res.AvgSpeed)
-		_ = w.st.FinalizeJobFiles(jobCtx, jobID, nil, "queued", "")
+		message = redactMessage(err.Error())
+		log.Printf("rule %s: scan: %s", w.rule.ID, message)
+	}
+	final, done := context.WithTimeout(context.Background(), 5*time.Second)
+	defer done()
+	if err := w.st.FinishRuleScan(final, w.rule.ID, stats, message); err != nil {
+		log.Printf("rule %s: save scan: %v", w.rule.ID, err)
+	}
+}
+func (w *ruleWorker) plan(ctx context.Context) {
+	if w.stopped.Load() || ctx.Err() != nil {
 		return
 	}
-	var donePaths []string
-	for _, p := range paths {
-		if _, ok := doneSet[p]; ok {
-			donePaths = append(donePaths, p)
+	if _, err := w.st.EnqueueStable(ctx, w.rule.ID, w.rule.BatchSize, 0); err != nil {
+		return
+	}
+	activities, err := w.st.RuleActivities(ctx)
+	if err != nil {
+		return
+	}
+	activity := activities[w.rule.ID]
+	if activity.Running+activity.Pending >= w.rule.MaxParallelJobs {
+		return
+	}
+	settings, err := w.st.RuntimeSettings(ctx)
+	if err != nil {
+		return
+	}
+	groups, err := w.st.QueuedGroups(ctx, w.rule)
+	if err != nil {
+		return
+	}
+	if len(groups) == 0 {
+		return
+	}
+	budget, err := w.st.AvailableBudget(ctx, w.rule)
+	if err != nil {
+		_ = w.st.SetRuleBlock(ctx, w.rule.ID, "configuration", err.Error())
+		return
+	}
+	var selected []store.QueuedGroup
+	var files []store.TransferJobFile
+	var bytes int64
+	layoutBlocked := false
+	for _, g := range groups {
+		if w.rule.AtomicPublish && g.Directory == "" {
+			layoutBlocked = true
+			_ = w.st.SetRuleBlock(ctx, w.rule.ID, "source_layout", "整目录发布需要每部影片位于源目录下的独立子目录")
+			continue
+		}
+		if budget >= 0 && g.Bytes > budget-bytes {
+			continue
+		}
+		if len(files) > 0 && (w.rule.AtomicPublish || len(files)+len(g.Files) > w.rule.BatchSize) {
+			break
+		}
+		selected = append(selected, g)
+		bytes += g.Bytes
+		if w.rule.AtomicPublish {
+			files = append(files, store.RelativeGroupFiles(g)...)
+		} else {
+			files = append(files, g.Files...)
+		}
+		if len(files) >= w.rule.BatchSize || w.rule.AtomicPublish {
+			break
 		}
 	}
-	if len(donePaths) != len(paths) {
-		// rclone may exit 0 with "There was nothing to transfer" (everything already exists at destination).
-		// In that case we should treat all claimed paths as finished to avoid endless re-queue loops.
-		if len(donePaths) == 0 && logHadNothingToTransfer(logPath) {
-			_ = w.st.UpdateJobDone(jobCtx, jobID, res.BytesDone, res.AvgSpeed)
-			_ = w.st.FinalizeJobFiles(jobCtx, jobID, paths, "queued", "")
-			_ = w.st.ClearJobOnDone(jobCtx, jobID)
+	if len(files) == 0 {
+		if layoutBlocked {
 			return
 		}
-		_ = w.st.UpdateJobFailed(jobCtx, jobID, fmt.Sprintf("incomplete: %d/%d transferred", len(donePaths), len(paths)), res.BytesDone, res.AvgSpeed)
-		_ = w.st.FinalizeJobFiles(jobCtx, jobID, donePaths, "queued", "")
-		_ = w.st.ClearJobOnDone(jobCtx, jobID)
+		_ = w.st.SetRuleBlock(ctx, w.rule.ID, "quota_exhausted", fmt.Sprintf("完整文件组无法放入剩余配额（剩余 %d 字节）；等待配额恢复或调整上限", budget))
 		return
 	}
-	_ = w.st.UpdateJobDone(jobCtx, jobID, res.BytesDone, res.AvgSpeed)
-	_ = w.st.FinalizeJobFiles(jobCtx, jobID, donePaths, "queued", "")
-	_ = w.st.ClearJobOnDone(jobCtx, jobID)
+	frozen := w.rule
+	spec := TransferSpec{Operation: w.rule.TransferMode, Files: files, RuleSnapshot: &frozen, Prepared: true}
+	groupKey := ""
+	if w.rule.AtomicPublish {
+		spec.SourceSubpath = selected[0].Directory
+		spec.DestinationSubpath = selected[0].Directory
+		spec.GroupSignature = selected[0].Signature
+		groupKey = selected[0].Key
+	}
+	encoded, err := EncodeTransferSpec(spec)
+	if err != nil {
+		return
+	}
+	id := newID()
+	job := store.TransferJob{JobID: id, RuleID: w.rule.ID, Origin: store.OriginScheduler, TransferMode: w.rule.TransferMode, RequestJSON: encoded, QuotaGroup: w.rule.LimitGroup, GroupKey: groupKey, LogPath: filepath.Join(settings.LogDir, w.rule.ID, id+".log")}
+	if err := w.st.QueueSchedulerTask(ctx, job, selected, files); err != nil {
+		log.Printf("rule %s: queue task: %v", w.rule.ID, err)
+		return
+	}
+	_ = w.st.SetRuleBlock(ctx, w.rule.ID, "", "")
 }
-
 func (w *ruleWorker) watchLocal(ctx context.Context) {
 	root := strings.TrimSpace(w.rule.SrcLocalRoot)
 	if root == "" {
@@ -437,182 +289,6 @@ func (w *ruleWorker) watchLocal(ctx context.Context) {
 		case <-debounce.C:
 			pending = false
 			w.triggerScan()
-		}
-	}
-}
-
-type jobResult struct {
-	BytesDone int64
-	AvgSpeed  float64
-	Err       error
-}
-
-var errTerminatedByUser = errors.New("terminated by user")
-var errTerminatedBySignal = errors.New("terminated by signal")
-
-func (w *ruleWorker) runWithMetrics(ctx context.Context, settings store.RuntimeSettings, port int, filesFromPath, logPath, jobID string) jobResult {
-	var src string
-	if w.rule.SrcKind == "local" {
-		src = w.rule.SrcLocalRoot
-	} else {
-		src = fmt.Sprintf("%s:%s", w.rule.SrcRemote, w.rule.SrcPath)
-	}
-	dst := fmt.Sprintf("%s:%s", w.rule.DstRemote, w.rule.DstPath)
-
-	args := []string{
-		w.rule.TransferMode,
-		src, dst,
-		"--stats", "0",
-		"--rc",
-		"--rc-no-auth",
-		"--rc-addr", fmt.Sprintf("127.0.0.1:%d", port),
-		"--log-file", logPath,
-		"--log-level", "INFO",
-		fmt.Sprintf("--transfers=%d", settings.Transfers),
-		fmt.Sprintf("--checkers=%d", settings.Checkers),
-	}
-	if strings.TrimSpace(settings.RcloneConfigPath) != "" {
-		args = append(args, "--config", settings.RcloneConfigPath)
-	}
-	if strings.TrimSpace(filesFromPath) != "" {
-		// Newer rclone versions forbid combining --files-from with any other filter options (e.g. --exclude).
-		// Use --files-from-raw so extension filters and user extra args keep working together.
-		args = append(args, "--files-from-raw", filesFromPath)
-	}
-	if settings.BufferSize != "" {
-		args = append(args, "--buffer-size", settings.BufferSize)
-	}
-	if settings.DriveChunkSize != "" {
-		args = append(args, "--drive-chunk-size", settings.DriveChunkSize)
-	}
-	effectiveBwlimit := strings.TrimSpace(w.rule.Bwlimit)
-	if effectiveBwlimit == "" {
-		effectiveBwlimit = strings.TrimSpace(settings.Bwlimit)
-	}
-	if effectiveBwlimit != "" {
-		args = append(args, "--bwlimit", effectiveBwlimit)
-	}
-	if w.rule.ResumeEnabled {
-		args = append(args, "--partial")
-		if strings.TrimSpace(w.rule.PartialDir) != "" {
-			args = append(args, "--partial-dir", w.rule.PartialDir)
-		}
-		if strings.TrimSpace(w.rule.PartialSuffix) != "" {
-			args = append(args, "--partial-suffix", w.rule.PartialSuffix)
-		}
-	}
-	if w.rule.MinFileSizeBytes > 0 {
-		// When using --files-from/--files-from-raw, rclone forbids combining with any other filter options.
-		// min_file_size is already enforced by our scan/enqueue/claim logic for automatic jobs.
-		if strings.TrimSpace(filesFromPath) == "" {
-			args = append(args, "--min-size", fmt.Sprintf("%d", w.rule.MinFileSizeBytes))
-		}
-	}
-	// ignore_extensions is enforced in scan/DB for automatic jobs, so we only pass excludes for manual runs.
-	if strings.TrimSpace(filesFromPath) == "" {
-		if rawExts := strings.ReplaceAll(w.rule.IgnoreExtensions, ",", " "); strings.TrimSpace(rawExts) != "" {
-			for _, ext := range strings.Fields(rawExts) {
-				if strings.HasPrefix(ext, ".") && !strings.Contains(ext, "*") {
-					ext = "*" + ext
-				}
-				args = append(args, "--exclude", ext)
-			}
-		}
-	}
-	if strings.TrimSpace(w.rule.RcloneExtraArgs) != "" {
-		parsed, err := ParseRcloneArgs(w.rule.RcloneExtraArgs)
-		if err != nil {
-			return jobResult{Err: err}
-		}
-		san := SanitizeRcloneArgs(parsed)
-		if strings.TrimSpace(filesFromPath) != "" {
-			san = SanitizeRcloneFilterArgs(san.Args)
-		}
-		args = append(args, san.Args...)
-	}
-
-	_ = os.MkdirAll(filepath.Dir(logPath), 0o755)
-	log.Printf("[Executor] Job %s: running rclone %s", jobID, strings.Join(args, " "))
-	cmd := exec.CommandContext(ctx, "rclone", args...)
-	cmd.Stdout = nil
-	var stderr strings.Builder
-	cmd.Stderr = &stderr
-
-	if err := cmd.Start(); err != nil {
-		return jobResult{Err: err}
-	}
-	var h *JobHandle
-	if w.jr != nil {
-		h = w.jr.Register(jobID, cmd)
-		defer w.jr.Unregister(jobID)
-	}
-
-	start := time.Now()
-	readyUntil := time.Now().Add(10 * time.Second)
-	var last rcStats
-	for time.Now().Before(readyUntil) {
-		s, err := pollRC(ctx, port)
-		if err == nil {
-			last = s
-			break
-		}
-		time.Sleep(200 * time.Millisecond)
-	}
-
-	done := make(chan error, 1)
-	go func() { done <- cmd.Wait() }()
-
-	ticker := time.NewTicker(settings.MetricsInterval)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			_ = cmd.Process.Kill()
-			_ = <-done
-			res := jobResult{BytesDone: last.Bytes, AvgSpeed: avgSpeed(last.Bytes, start), Err: ctx.Err()}
-			if h != nil && h.Terminated() {
-				res.Err = errTerminatedByUser
-			}
-			log.Printf("[Executor] Job %s finished: %v (Done: %d bytes, AvgSpeed: %.2f B/s)", jobID, res.Err, res.BytesDone, res.AvgSpeed)
-			return res
-		case err := <-done:
-			res := jobResult{BytesDone: last.Bytes, AvgSpeed: avgSpeed(last.Bytes, start), Err: err}
-			if h != nil && h.Terminated() {
-				res.Err = errTerminatedByUser
-			}
-			if res.Err != nil {
-				// keep log in log file; minimal error message here
-				var exitErr *exec.ExitError
-				if errors.As(res.Err, &exitErr) {
-					if st, ok := exitErr.Sys().(syscall.WaitStatus); ok && st.Signaled() {
-						res.Err = errTerminatedBySignal
-					} else {
-						msg := strings.TrimSpace(stderr.String())
-						if msg == "" {
-							msg = res.Err.Error()
-						}
-						res.Err = errors.New(msg)
-					}
-				}
-			}
-			log.Printf("[Executor] Job %s finished: %v (Done: %d bytes, AvgSpeed: %.2f B/s)", jobID, res.Err, res.BytesDone, res.AvgSpeed)
-			return res
-		case <-ticker.C:
-			s, err := pollRC(ctx, port)
-			if err != nil {
-				continue
-			}
-			last = s
-			_ = w.st.InsertJobMetric(ctx, store.JobMetric{
-				JobID:     jobID,
-				Ts:        time.Now(),
-				Bytes:     s.Bytes,
-				Speed:     s.Speed,
-				Transfers: s.Transfers,
-				Errors:    s.Errors,
-			})
-			_ = w.st.UpdateJobRunningStats(ctx, jobID, s.Bytes, s.Speed)
 		}
 	}
 }

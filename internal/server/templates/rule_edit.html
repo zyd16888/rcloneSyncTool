@@ -27,7 +27,7 @@
         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
           <label class="form-control">
             <div class="label"><span class="label-text">规则 ID</span></div>
-            <input type="text" name="id" value="{{.Rule.ID}}" placeholder="例如：ruleA" autocomplete="off" class="input input-bordered">
+            <input type="text" name="id" value="{{.Rule.ID}}" placeholder="例如：ruleA" autocomplete="off" class="input input-bordered" {{if .Rule.ID}}readonly{{end}}>
           </label>
 
           <label class="form-control">
@@ -143,11 +143,11 @@
               const input = document.getElementById('dailyLimitInput');
               const hint = document.getElementById('limitHint');
               if (sel && sel.value) {
-                input.disabled = true;
+                input.readOnly = true;
                 input.classList.add('opacity-50');
                 hint.innerText = "当前规则已加入分组，以此处设置为准无效。";
               } else {
-                input.disabled = false;
+                input.readOnly = false;
                 input.classList.remove('opacity-50');
                 hint.innerText = "";
               }
@@ -202,13 +202,13 @@
               <input type="checkbox" name="resume_enabled" value="1" class="checkbox" {{if .Rule.ResumeEnabled}}checked{{end}}>
               <span class="label-text">启用</span>
             </label>
-            <div class="label"><span class="label-text-alt opacity-70">对应 rclone 的 <code>--partial</code>。</span></div>
+            <div class="label"><span class="label-text-alt opacity-70">重试会复用已经完成的文件；字节续传能力取决于 rclone 后端。</span></div>
           </label>
 
           <label class="form-control">
             <div class="label"><span class="label-text">partial-dir</span></div>
-            <input type="text" name="partial_dir" value="{{.Rule.PartialDir}}" class="input input-bordered" placeholder="可选：例如 .rclone-partial">
-            <div class="label"><span class="label-text-alt opacity-70">对应 rclone 的 <code>--partial-dir</code>；留空使用默认。</span></div>
+            <input type="text" name="partial_dir" value="{{.Rule.PartialDir}}" class="input input-bordered" readonly>
+            <div class="label"><span class="label-text-alt opacity-70">旧设置仅保留显示；rclone 不支持 --partial-dir，影片暂存目录在下方配置。</span></div>
           </label>
 
           <label class="form-control">
@@ -223,10 +223,17 @@
           <div class="label"><span class="label-text">自定义参数(可选)（rclone）</span></div>
           <textarea name="rclone_extra_args" rows="3" class="textarea textarea-bordered font-mono text-xs w-full" style="border:1px solid rgba(179, 190, 206, 0.35);padding:.75rem 1rem;border-radius:.5rem;" placeholder='例如：--exclude "*.tmp" --drive-acknowledge-abuse'>{{.Rule.RcloneExtraArgs}}</textarea>
           <div class="label">
-            <span class="label-text-alt opacity-70">仅对 copy/move 生效；支持引号；会自动屏蔽 <code>--rc*</code>/<code>--stats*</code>/<code>--log-file</code>/<code>--files-from</code>/<code>--config</code> 等参数。</span>
+            <span class="label-text-alt opacity-70">过滤参数用于扫描和任务清单；支持引号。任务控制、日志、配置路径及 dry-run 参数由工具管理，保存时会拒绝冲突参数。</span>
           </div>
         </label>
 
+        <div class="divider">影片分组与发布</div>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <label class="form-control"><div class="label"><span class="label-text">按影片目录同步</span></div><label class="flex gap-2 items-center"><input class="checkbox" type="checkbox" name="group_by_directory" value="1" {{if .Rule.GroupByDirectory}}checked{{end}}><span>同一影片目录的分段、字幕和元数据一起传输</span></label><div class="label"><span class="label-text-alt opacity-70">影片目录需包含符合最小大小的主媒体文件。未启用时，仍会自动将同目录下同名 -1/-2、Part/CD 分段归组。</span></div></label>
+          <label class="form-control"><div class="label"><span class="label-text">完成后整目录发布</span></div><label class="flex gap-2 items-center"><input class="checkbox" type="checkbox" name="atomic_publish" value="1" {{if .Rule.AtomicPublish}}checked{{end}}><span>暂存、校验完成后再让影片进入正式目录</span></label><div class="label"><span class="label-text-alt opacity-70">需要按影片目录同步，源根目录应是影片集合目录。支持 local、Google Drive；move 在发布后清理源文件。</span></div></label>
+          <label class="form-control"><div class="label"><span class="label-text">目标暂存路径</span></div><input class="input input-bordered" name="staging_path" value="{{.Rule.StagingPath}}" placeholder="留空自动选择正式目录父级下的暂存目录"><div class="label"><span class="label-text-alt opacity-70">相对于目标 remote 根目录，必须位于正式目录和刮削器扫描范围之外。</span></div></label>
+          <label class="form-control"><div class="label"><span class="label-text">上游完成标记（可选）</span></div><input class="input input-bordered" name="ready_marker" value="{{.Rule.ReadyMarker}}" placeholder="例如 .ready"><div class="label"><span class="label-text-alt opacity-70">配置后，影片目录包含该文件才会入队；留空使用目录内容连续稳定的等待时间。</span></div></label>
+        </div>
         <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
           <label class="form-control">
             <div class="label"><span class="label-text">开放给 API</span></div>

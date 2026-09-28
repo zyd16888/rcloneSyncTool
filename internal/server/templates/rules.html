@@ -1,199 +1,58 @@
 {{define "content"}}
 <div class="space-y-4">
-  <div class="flex flex-wrap gap-2 items-center justify-between">
-    <div>
-      <h1 class="text-xl font-bold">同步规则</h1>
-      <div class="text-sm opacity-70">每条规则独立扫描/队列/任务/统计；支持 copy 或 move</div>
-    </div>
-    <div class="flex gap-2">
-      <a class="btn btn-sm btn-info text-info-content" href="/rules/edit">新建规则</a>
-      <a class="btn btn-sm btn-outline" href="/limit_groups">管理限流分组</a>
-      <a class="btn btn-sm btn-outline" href="/extension_presets">扩展名预设</a>
-      <a class="btn btn-sm btn-ghost" href="/manual">手动运行</a>
-    </div>
+  <div class="flex flex-wrap gap-3 items-center justify-between">
+    <div><h1 class="text-xl font-bold">同步规则</h1><div class="text-sm opacity-70">调度开关、实际任务与扫描结果</div></div>
+    <div class="flex flex-wrap gap-2"><a class="btn btn-sm btn-primary" href="/rules/edit">新建规则</a><a class="btn btn-sm btn-outline" href="/limit_groups">限流分组</a><a class="btn btn-sm btn-outline" href="/extension_presets">扩展名预设</a><a class="btn btn-sm btn-ghost" href="/manual">手动运行</a></div>
   </div>
-
-  <div class="card bg-base-100 border border-base-200">
-    <div class="card-body p-0">
-      {{if .Rules}}
-        <div class="overflow-visible relative rounded-xl">
-          <table class="table table-sm w-full border-separate border-spacing-0">
-            <thead class="sticky top-14 bg-base-100 z-[20] shadow-sm">
-              <tr>
-                <th class="w-16 bg-base-100 border-b border-base-200">ID</th>
-                <th class="w-20 bg-base-100 border-b border-base-200">状态</th>
-                <th class="bg-base-100 border-b border-base-200">映射路径</th>
-                <th class="bg-base-100 border-b border-base-200">策略 & 统计</th>
-                <th class="w-32 text-center bg-base-100 border-b border-base-200">操作</th>
-              </tr>
-            </thead>
-            <tbody>
-              {{range .Rules}}
-              <tr class="hover:bg-base-200/40 group">
-                <td class="align-top font-mono text-xs pt-4"><a class="link" href="/rules/edit?id={{.Rule.ID}}">{{.Rule.ID}}</a></td>
-                <td class="align-top pt-4">
-                  {{if .Rule.Enabled}}
-                    <span class="badge badge-success badge-outline badge-sm">运行中</span>
-                    {{else}}
-                    <span class="badge badge-ghost badge-sm opacity-50">已停止</span>
-                    {{end}}
-                </td>
-                <td class="align-top max-w-[200px] lg:max-w-[300px] pt-4">
-                  <div class="flex flex-col gap-1 text-left">
-                    <div class="flex items-center gap-1 text-xs opacity-50">
-                      <span class="badge badge-xs badge-outline uppercase">{{.Rule.TransferMode}}</span>
-                      {{if eq .Rule.SrcKind "local"}}<span class="badge badge-xs badge-ghost">Watch: {{if .Rule.LocalWatch}}ON{{else}}OFF{{end}}</span>{{end}}
-                    </div>
-                    <div class="text-sm font-medium truncate" title="{{if eq .Rule.SrcKind "local"}}{{.Rule.SrcLocalRoot}}{{else}}{{.Rule.SrcRemote}}:{{.Rule.SrcPath}}{{end}}">
-                      {{if eq .Rule.SrcKind "local"}}
-                        <span class="opacity-70">📂</span> {{.Rule.SrcLocalRoot}}
-                      {{else}}
-                        <span class="opacity-70">☁️</span> {{.Rule.SrcRemote}}:<span class="opacity-70">{{.Rule.SrcPath}}</span>
-                      {{end}}
-                    </div>
-                    <div class="text-xs opacity-50 w-6 text-center">↓</div>
-                    <div class="text-sm truncate" title="{{.Rule.DstRemote}}:{{.Rule.DstPath}}">
-                      <span class="opacity-70">☁️</span> {{.Rule.DstRemote}}:<span class="opacity-70">{{.Rule.DstPath}}</span>
-                    </div>
-                  </div>
-                </td>
-                <td class="align-top text-xs pt-4">
-                  <div class="flex flex-col gap-2 items-start">
-                    <div class="flex flex-wrap gap-x-3 gap-y-1 opacity-70 ml-1">
-                      <span title="扫描间隔">⏱️ {{.Rule.ScanIntervalSec}}s</span>
-                      <span title="稳定时间">⚓ {{.Rule.StableSeconds}}s</span>
-                      <span title="并发数">🚀 {{.Rule.MaxParallelJobs}}</span>
-                      {{if .Rule.Bwlimit}}<span title="限速">🛑 {{.Rule.Bwlimit}}</span>{{end}}
-                      {{if gt .Rule.MinFileSizeBytes 0}}<span title="最小文件">📉 {{humanBytes .Rule.MinFileSizeBytes}}</span>{{end}}
-                    </div>
-                    
-                    <div class="p-2 bg-base-200/50 rounded border border-base-200 w-full max-w-sm">
-                      <div class="flex flex-wrap gap-x-4 gap-y-1 text-[11px]">
-                        <div class="flex items-center gap-1.5 opacity-80"><span class="opacity-60">🆕 新发现</span><span class="font-bold font-mono">{{.Counts.New}}</span></div>
-                        <div class="flex items-center gap-1.5 opacity-80"><span class="opacity-60">⏳ 排队中</span><span class="font-bold font-mono">{{.Counts.Queued}}</span></div>
-                        <div class="flex items-center gap-1.5 {{if gt .Counts.Transferring 0}}text-primary{{else}}opacity-80{{end}}"><span class="opacity-60">▶️ 传输中</span><span class="font-bold font-mono">{{.Counts.Transferring}}</span></div>
-                        <div class="flex items-center gap-1.5 opacity-80"><span class="opacity-60">✅ 已完成</span><span class="font-bold font-mono">{{.Counts.Done}}</span></div>
-                        {{if gt .Counts.Failed 0}}
-                          <div class="flex items-center gap-1.5 text-error w-full mt-0.5 border-t border-base-content/5 pt-0.5"><span class="opacity-60">❌ 失败</span><span class="font-bold font-mono">{{.Counts.Failed}}</span></div>
-                        {{end}}
-                      </div>
-
-                      {{if gt .Usage24h 0}}
-                        <div class="mt-2 pt-2 border-t border-base-content/5 flex justify-between items-center text-[10px]">
-                          <span class="opacity-50">24h 流量</span>
-                          <span class="{{if and (not .Rule.LimitGroup) (gt .Rule.DailyLimitBytes 0) (ge .Usage24h .Rule.DailyLimitBytes)}}text-error font-bold{{end}}">
-                            {{humanBytes .Usage24h}}{{if and (not .Rule.LimitGroup) (gt .Rule.DailyLimitBytes 0)}} / {{humanBytes .Rule.DailyLimitBytes}}{{end}}
-                          </span>
-                        </div>
-                      {{end}}
-
-                      {{if .Rule.LimitGroup}}
-                         <div class="mt-1 flex justify-end">
-                           <span class="badge badge-xs badge-ghost text-[9px] opacity-70">组: {{.Rule.LimitGroup}}</span>
-                         </div>
-                      {{end}}
-                    </div>
-                  </div>
-                </td>
-                <td class="align-top text-center pt-4">
-                  <div class="flex items-center justify-center gap-1">
-                    <!-- Scan -->
-                    <form method="post" action="/rules/scan">
-                      <input type="hidden" name="id" value="{{.Rule.ID}}">
-                      <button class="btn btn-sm btn-ghost btn-square tooltip" data-tip="立即扫描" type="submit">
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5">
-                          <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z" />
-                        </svg>
-                      </button>
-                    </form>
-<!-- Toggle Start/Stop -->
-<form method="post" action="/rules/toggle">
-  <input type="hidden" name="id" value="{{.Rule.ID}}">
-  <input type="hidden" name="enabled" value="{{if .Rule.Enabled}}0{{else}}1{{end}}">
-  <button class="btn btn-sm btn-ghost btn-square tooltip {{if .Rule.Enabled}}text-warning{{else}}text-success{{end}}"
-    data-tip="{{if .Rule.Enabled}}停止规则{{else}}启动规则{{end}}" type="submit">
-    {{if .Rule.Enabled}}
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"
-      class="w-5 h-5">
-      <path stroke-linecap="round" stroke-linejoin="round"
-        d="M15.75 5.25a3 3 0 013 3m3 0a6 6 0 01-7.029 5.912c-.563-.097-1.159.026-1.563.43L10.5 17.25H8.25v2.25H6v2.25H2.25v-2.818c0-.597.237-1.17.659-1.591l6.499-6.499c.404-.404.527-1 .43-1.563A6 6 0 1121.75 8.25z" />
-    </svg>
-    {{else}}
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"
-      class="w-5 h-5">
-      <path stroke-linecap="round" stroke-linejoin="round"
-        d="M5.25 5.653c0-.856.917-1.398 1.667-.986l11.54 6.348a1.125 1.125 0 010 1.971l-11.54 6.347a1.125 1.125 0 01-1.667-.985V5.653z" />
-    </svg>
-    {{end}}
-  </button>
-</form>
-                    
-                    <!-- More -->
-                    <div class="dropdown dropdown-left">
-                      <div tabindex="0" role="button" class="btn btn-sm btn-ghost btn-square">
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5">
-                          <path stroke-linecap="round" stroke-linejoin="round" d="M12 6.75a.75.75 0 1 1 0-1.5.75.75 0 0 1 0 1.5ZM12 12.75a.75.75 0 1 1 0-1.5.75.75 0 0 1 0 1.5ZM12 18.75a.75.75 0 1 1 0-1.5.75.75 0 0 1 0 1.5Z" />
-                        </svg>
-                      </div>
-                      <ul tabindex="0" class="dropdown-content z-[100] menu p-2 shadow-2xl bg-base-100 rounded-box w-40 text-sm border border-base-200 mr-2">
-                        <li>
-                          <form method="post" action="/rules/retry_failed" class="p-0">
-                            <input type="hidden" name="id" value="{{.Rule.ID}}">
-                            <button type="submit" class="flex gap-2 w-full px-4 py-2 hover:bg-base-200 rounded-lg">
-                              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
-                              </svg>
-                              <span>重试失败</span>
-                            </button>
-                          </form>
-                        </li>
-                        <li>
-                          <a href="/rules/edit?copy_from_id={{.Rule.ID}}" class="flex gap-2 px-4 py-2">
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4">
-                              <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 17.25v3.375c0 .621-.504 1.125-1.125 1.125h-9.75a1.125 1.125 0 01-1.125-1.125V7.875c0-.621.504-1.125 1.125-1.125H6.75a9.06 9.06 0 011.5.124m7.5 10.376h3.375c.621 0 1.125-.504 1.125-1.125V11.25c0-4.46-3.243-8.161-7.5-8.876a9.06 9.06 0 00-1.5-.124H9.375c-.621 0-1.125.504-1.125 1.125v3.5m7.5 10.375H9.375a1.125 1.125 0 01-1.125-1.125v-9.25m12 6.625v-1.875a3.375 3.375 0 00-3.375-3.375h-1.5" />
-                            </svg>
-                            <span>复制规则</span>
-                          </a>
-                        </li>
-                        <div class="divider my-1 opacity-20"></div>
-                        <li>
-                          <form method="post" action="/rules/delete" onsubmit="return confirm('确定要删除该规则吗？');" class="p-0">
-                            <input type="hidden" name="id" value="{{.Rule.ID}}">
-                            <button type="submit" class="flex gap-2 w-full px-4 py-2 text-error hover:bg-error/10 rounded-lg">
-                              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-4 h-4 text-error">
-                                <path stroke-linecap="round" stroke-linejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0" />
-                              </svg>
-                              <span>删除规则</span>
-                            </button>
-                          </form>
-                        </li>
-                      </ul>
-                    </div>
-                  </div>
-                </td>
-              </tr>
-              {{end}}
-            </tbody>
-          </table>
-        </div>
-      {{else}}
-        <div class="app-empty">
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="opacity:.35">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M7.5 7.5h9m-9 9h9" />
-            <path stroke-linecap="round" stroke-linejoin="round" d="M6 4.5 3.75 7.5 6 10.5" />
-            <path stroke-linecap="round" stroke-linejoin="round" d="M18 13.5l2.25 3L18 19.5" />
-          </svg>
-          <div>
-            <div class="app-empty-title">还没有同步规则</div>
-            <div class="app-empty-desc">创建规则后会自动扫描并按队列启动任务（copy/move）。</div>
-          </div>
-          <div class="app-empty-actions">
-            <a class="btn btn-info text-info-content" href="/rules/edit">新建规则</a>
-            <a class="btn btn-ghost" href="/manual">手动运行</a>
-          </div>
-        </div>
-      {{end}}
-    </div>
-  </div>
+  {{if .Notice}}<div class="alert {{if .IsError}}alert-error{{else}}alert-info{{end}}"><span>{{.Notice}}</span></div>{{end}}
+  <div class="card bg-base-100 border border-base-200"><div class="card-body p-4">
+    <form method="get" action="/rules" class="grid grid-cols-2 lg:flex lg:flex-wrap gap-3 items-end" id="rulesFilter">
+      <label class="form-control w-full lg:w-56 col-span-2"><div class="label"><span class="label-text">规则或路径</span></div><input class="input input-bordered input-sm" name="q" value="{{.Q}}" placeholder="ID、源路径、目标路径"></label>
+      <label class="form-control w-full sm:w-32"><div class="label"><span class="label-text">调度开关</span></div><select class="select select-bordered select-sm" name="enable"><option value="">全部</option><option value="enabled" {{if eq .Enable "enabled"}}selected{{end}}>已启用</option><option value="paused" {{if eq .Enable "paused"}}selected{{end}}>已暂停</option></select></label>
+      <label class="form-control w-full sm:w-36"><div class="label"><span class="label-text">执行状态</span></div><select class="select select-bordered select-sm" name="runtime"><option value="">全部</option><option value="running" {{if eq .RuntimeFilter "running"}}selected{{end}}>正在执行</option><option value="queued" {{if eq .RuntimeFilter "queued"}}selected{{end}}>等待执行</option><option value="failed" {{if eq .RuntimeFilter "failed"}}selected{{end}}>当前有失败</option><option value="blocked" {{if eq .RuntimeFilter "blocked"}}selected{{end}}>存在阻塞</option><option value="idle" {{if eq .RuntimeFilter "idle"}}selected{{end}}>空闲</option></select></label>
+      <label class="form-control w-full sm:w-40"><div class="label"><span class="label-text">限流分组</span></div><select class="select select-bordered select-sm" name="group"><option value="">全部</option>{{range .Groups}}<option value="{{.Name}}" {{if eq $.GroupFilter .Name}}selected{{end}}>{{.Name}}</option>{{end}}</select></label>
+      <label class="form-control w-24"><div class="label"><span class="label-text">每页</span></div><select class="select select-bordered select-sm" name="page_size"><option value="10" {{if eq .PageSize 10}}selected{{end}}>10</option><option value="20" {{if eq .PageSize 20}}selected{{end}}>20</option><option value="50" {{if eq .PageSize 50}}selected{{end}}>50</option><option value="100" {{if eq .PageSize 100}}selected{{end}}>100</option></select></label>
+      <button class="btn btn-sm btn-primary" type="submit">筛选</button><a class="btn btn-sm btn-ghost" href="/rules">重置</a>
+      <label class="flex items-center gap-2 text-xs opacity-70"><input id="autoRefreshRules" type="checkbox" class="checkbox checkbox-xs" checked>自动刷新</label>
+    </form>
+  </div></div>
+  <div class="card bg-base-100 border border-base-200"><div class="overflow-x-auto">
+    <table class="table table-sm" style="min-width:880px"><thead><tr><th>规则 / 状态</th><th>源 → 目标</th><th>文件 / 任务</th><th>扫描 / 阻塞</th><th>操作</th></tr></thead>
+    <tbody id="rulesRows">
+    {{range .Rules}}<tr>
+      <td><a class="link font-mono text-xs" href="/rules/edit?id={{.Rule.ID}}">{{.Rule.ID}}</a><div class="flex flex-wrap gap-1 mt-2">{{if .Rule.Enabled}}<span class="badge badge-success badge-outline badge-sm">已启用</span>{{else}}<span class="badge badge-ghost badge-sm">已暂停</span>{{end}}{{if gt .Activity.Running 0}}<span class="badge badge-primary badge-sm">执行 {{.Activity.Running}}</span>{{else if gt .Activity.Pending 0}}<span class="badge badge-warning badge-sm">任务等待 {{.Activity.Pending}}</span>{{else if .Runtime.BlockReason}}<span class="badge badge-warning badge-sm">等待条件恢复</span>{{else if gt .Counts.New 0}}<span class="badge badge-ghost badge-sm">等待稳定</span>{{else}}<span class="badge badge-ghost badge-sm">空闲</span>{{end}}</div><div class="text-xs opacity-60 mt-2">{{.Rule.TransferMode}}{{if .Rule.AtomicPublish}} · 整目录发布{{else if .Rule.GroupByDirectory}} · 影片目录分组{{end}}</div></td>
+      <td><div class="text-xs break-all max-w-xs min-w-48">{{if eq .Rule.SrcKind "local"}}{{.Rule.SrcLocalRoot}}{{else}}{{.Rule.SrcRemote}}:{{.Rule.SrcPath}}{{end}}</div><div class="opacity-50 text-xs">↓</div><div class="text-xs break-all max-w-xs min-w-48">{{.Rule.DstRemote}}:{{.Rule.DstPath}}</div><div class="text-xs opacity-60 mt-2">扫描 {{.Rule.ScanIntervalSec}}s · 稳定 {{.Rule.StableSeconds}}s · 并发 {{.Rule.MaxParallelJobs}}{{if .Rule.LimitGroup}} · 组 {{.Rule.LimitGroup}}{{end}}</div><div class="text-xs opacity-60">24h {{humanBytes .Usage24h}}{{if and (not .Rule.LimitGroup) (gt .Rule.DailyLimitBytes 0)}} / {{humanBytes .Rule.DailyLimitBytes}}{{end}}</div></td>
+      <td class="text-xs whitespace-nowrap"><div>等待稳定 {{.Counts.New}} · 可排队 {{.Counts.Stable}}</div><div class="mt-1">排队 {{.Counts.Queued}} · 传输 {{.Counts.Transferring}}</div><div class="mt-1">完成 {{.Counts.Done}} · <span class="{{if gt .Counts.Failed 0}}text-error{{end}}">失败 {{.Counts.Failed}}</span></div>{{if gt .Counts.Missing 0}}<div class="mt-1 opacity-60">源文件缺失 {{.Counts.Missing}}</div>{{end}}</td>
+      <td class="text-xs max-w-xs"><div class="opacity-60">{{if .Runtime.ScanEndedAt.IsZero}}等待首次扫描{{else}}最近扫描 {{ts .Runtime.ScanEndedAt}}{{end}}</div><div class="mt-1">发现 {{.Runtime.Discovered}} · 可传 {{.Runtime.Eligible}} · 过滤 {{.Runtime.Filtered}}</div>{{if .Runtime.ScanError}}<div class="text-error break-all mt-1">扫描失败：{{.Runtime.ScanError}}</div>{{end}}{{if .Runtime.BlockMessage}}<div class="text-warning break-all mt-1">{{.Runtime.BlockMessage}}</div>{{end}}</td>
+      <td><div class="flex flex-wrap gap-1 min-w-40">
+        <form method="post" action="/rules/toggle"><input type="hidden" name="id" value="{{.Rule.ID}}"><input type="hidden" name="return_url" value="{{$.SelfURL}}"><input type="hidden" name="enabled" value="{{if .Rule.Enabled}}0{{else}}1{{end}}"><button class="btn btn-xs btn-outline" type="submit">{{if .Rule.Enabled}}暂停新任务{{else}}启用{{end}}</button></form>
+        <form method="post" action="/rules/scan"><input type="hidden" name="id" value="{{.Rule.ID}}"><input type="hidden" name="return_url" value="{{$.SelfURL}}"><button class="btn btn-xs btn-ghost" type="submit">扫描</button></form>
+        <form method="post" action="/rules/retry_failed"><input type="hidden" name="id" value="{{.Rule.ID}}"><input type="hidden" name="return_url" value="{{$.SelfURL}}"><button class="btn btn-xs btn-ghost" type="submit">重试失败</button></form>
+        <a class="btn btn-xs btn-ghost" href="/jobs?rule_id={{.Rule.ID}}">任务</a><a class="btn btn-xs btn-ghost" href="/rules/edit?copy_from_id={{.Rule.ID}}">复制</a>
+        <form method="post" action="/rules/delete" onsubmit="return confirm('删除规则会取消尚未执行的任务，保留历史记录。确定继续？');"><input type="hidden" name="id" value="{{.Rule.ID}}"><input type="hidden" name="return_url" value="{{$.SelfURL}}"><button class="btn btn-xs btn-error btn-outline" type="submit">删除</button></form>
+      </div></td>
+    </tr>{{else}}<tr><td colspan="5" class="text-center opacity-60 py-8">暂无匹配规则，请调整筛选条件或新建规则。</td></tr>{{end}}
+    </tbody></table>
+  </div><div id="rulesPagination" class="p-4 flex flex-wrap items-center justify-between gap-2"><div class="text-sm opacity-70">共 {{.Total}} 条 · 第 {{.Page}} / {{.TotalPages}} 页</div><div class="flex gap-2">{{if .HasPrev}}<a class="btn btn-sm btn-ghost" href="{{.PrevURL}}">上一页</a>{{end}}{{if .HasNext}}<a class="btn btn-sm btn-ghost" href="{{.NextURL}}">下一页</a>{{end}}</div></div></div>
 </div>
+<script>
+(() => {
+  const enabled = document.getElementById('autoRefreshRules');
+  let updating = false;
+  async function refresh() {
+    if (!enabled.checked || updating || document.visibilityState !== 'visible' || document.activeElement?.closest('#rulesFilter')) return;
+    updating = true;
+    try {
+      const response = await fetch(location.href);
+      if (!response.ok) return;
+      const page = new DOMParser().parseFromString(await response.text(), 'text/html');
+      for (const id of ['rulesRows', 'rulesPagination']) {
+        const replacement = page.getElementById(id);
+        if (replacement) document.getElementById(id).replaceChildren(...replacement.childNodes);
+      }
+    } catch (_) {} finally { updating = false; }
+  }
+  setInterval(refresh, 15000);
+})();
+</script>
 {{end}}

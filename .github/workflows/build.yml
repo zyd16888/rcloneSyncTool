@@ -36,6 +36,15 @@ jobs:
           go-version: "1.22.x"
           cache: true
 
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Build UI
+        run: npm ci && npm run build:css
+
       - name: Build
         shell: bash
         env:
@@ -49,7 +58,7 @@ jobs:
           if [ "${GOOS}" = "windows" ]; then ext=".exe"; fi
           outdir="dist/${GOOS}-${GOARCH}"
           mkdir -p "${outdir}"
-          go build -trimpath -ldflags "-s -w" -o "${outdir}/${name}${ext}" ./cmd/115togd
+          go build -trimpath -ldflags "-s -w -X 115togd/internal/version.AppVersion=${GITHUB_REF_NAME}" -o "${outdir}/${name}${ext}" ./cmd/115togd
           cp -f AGENTS.md "${outdir}/" || true
           cp -f "Design & Implementation Guide.md" "${outdir}/" || true
           cp -f LICENSE "${outdir}/" || true
