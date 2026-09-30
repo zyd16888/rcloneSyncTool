@@ -105,6 +105,7 @@
   window.addEventListener('resize',App.closeMenus);window.addEventListener('scroll',App.closeMenus,{passive:true});
 
   const pending=new WeakSet();
+  App.pendingActions=0;
   document.addEventListener('submit',async event=>{
     const form=event.target;
     if(!form.matches('form')||form.method.toLowerCase()!=='post')return;
@@ -124,33 +125,42 @@
     buttons.forEach(b=>{b.disabled=true;b.setAttribute('aria-busy','true');if(b===submitter)b.textContent='提交中…';});
     form.querySelectorAll('.app-field-error').forEach(el=>el.remove());form.querySelectorAll('.is-invalid').forEach(el=>el.classList.remove('is-invalid'));
     const previousFeedback=form.querySelector('[data-form-feedback]');if(previousFeedback)previousFeedback.hidden=true;
+    const submitted=App.forms?.capture(form);App.pendingActions++;
     try{
       const body=new URLSearchParams();for(const [key,value]of new FormData(form)){if(typeof value==='string')body.append(key,value);}
       const {data,response}=await App.request(form.action,{method:'POST',body});
       if(typeof data!=='object'){
-        if(response.redirected){App.forms?.markClean(form);location.assign(response.url);return;}
+        if(response.redirected){if(!App.forms?.markSaved(form,submitted))location.assign(response.url);return;}
         throw new Error('操作返回了无法识别的结果，请刷新确认状态');
       }
-      App.forms?.markClean(form);App.toast(data.message||'操作已完成');
+      const dirty=App.forms?.markSaved(form,submitted,data.values);App.toast(data.message||'操作已完成');
+      if(data.config_path_display!==undefined){const path=form.querySelector('[data-config-path]');if(path)path.textContent='当前路径：'+data.config_path_display;}
+      if(dirty){
+        let feedback=form.querySelector('[data-form-feedback]');
+        if(!feedback){feedback=document.createElement('div');feedback.dataset.formFeedback='';form.append(feedback);}
+        feedback.className='alert alert-info app-form-feedback';feedback.textContent='本次提交已保存，提交后的修改仍未保存。';feedback.hidden=false;
+        if(data.next){const next=new URL(data.next,location.origin);if(next.origin===location.origin&&next.href!==location.href){const link=document.createElement('a');link.className='link';link.href=next.href;link.textContent='查看已提交结果';feedback.append(link);}}
+        return;
+      }
       if(form.hasAttribute('data-refresh-page')){location.assign(data.next||location.href);return;}
       form.dispatchEvent(new CustomEvent('app:action-success',{bubbles:true,detail:data}));
       if(data.next){
         const next=new URL(data.next,location.origin);
         if(next.origin!==location.origin)throw new Error('返回地址无效');
         if(next.pathname==='/jobs/view'&&document.getElementById('jobDrawer')?.open){await App.openJob(next.searchParams.get('id'));return;}
-        if(next.pathname!==location.pathname){location.assign(next);return;}
+        if(next.pathname!==location.pathname||(next.pathname==='/jobs/view'&&next.searchParams.get('id')!==new URL(location.href).searchParams.get('id'))){location.assign(next);return;}
       }
-      App.refreshLists?.();
+      if(await App.refreshLists?.()===false)App.toast('操作已成功，列表更新失败，请点击“重试刷新”，无需重复提交。',true);
     }catch(error){
       if(error.name==='AbortError')return;
       let feedback=form.querySelector('[data-form-feedback]');
       if(!feedback&&form.hasAttribute('data-edit-form')){feedback=document.createElement('div');feedback.dataset.formFeedback='';feedback.className='alert alert-error app-form-feedback';feedback.setAttribute('role','alert');form.append(feedback);}
-      if(feedback){feedback.textContent=error.message;feedback.hidden=false;}
+      if(feedback){feedback.className='alert alert-error app-form-feedback';feedback.textContent=error.message;feedback.hidden=false;}
       const field=Array.from(form.elements).find(el=>el.name===error.field);
       if(field){const panel=field.closest('[data-form-panel]');if(panel)App.forms?.applyTab(form,panel.dataset.formPanel);field.closest('.app-field')?.classList.add('is-invalid');field.focus();const message=document.createElement('span');message.className='app-field-error';message.textContent=error.message;field.closest('.app-field')?.append(message);}
       App.toast(error.message,true);
     }finally{
-      states.forEach(({button,disabled,html})=>{button.disabled=disabled;button.removeAttribute('aria-busy');button.innerHTML=html;});pending.delete(form);
+      states.forEach(({button,disabled,html})=>{button.disabled=disabled;button.removeAttribute('aria-busy');button.innerHTML=html;});pending.delete(form);App.pendingActions--;
     }
   });
 
@@ -183,6 +193,7 @@
   });
   window.addEventListener('popstate',()=>{const id=new URL(location.href).searchParams.get('job');if(id&&id!==currentJob)App.openJob(id,false);else if(!id&&currentJob)App.closeJob(false);});
   window.addEventListener('pagehide',()=>{detailController?.destroy();drawerAbort?.abort();});
+  window.addEventListener('pageshow',event=>{if(event.persisted){const id=new URL(location.href).searchParams.get('job');if(id)App.openJob(id,false);}});
 
   document.addEventListener('DOMContentLoaded',()=>{
     const theme=document.getElementById('btnThemeToggle'),html=document.documentElement;

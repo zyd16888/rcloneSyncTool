@@ -176,7 +176,11 @@ func (s *Server) ruleTogglePost(c *gin.Context) {
 	if !enabled && s.supervisor != nil {
 		s.supervisor.StopRule(id)
 	}
-	s.ruleFeedback(c, "规则调度开关已更新，运行中的任务继续完成", false)
+	if enabled {
+		s.ruleFeedback(c, "规则调度已启用，将在下一次调度时自动扫描", false)
+	} else {
+		s.ruleFeedback(c, "规则调度已暂停，运行中的任务继续完成", false)
+	}
 }
 
 func (s *Server) ruleScanPost(c *gin.Context) {

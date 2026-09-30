@@ -5,6 +5,7 @@
   const fields=form=>Array.from(form.elements).filter(el=>el.name&&el.type!=='submit'&&el.type!=='button'&&!el.hasAttribute('data-draft-skip')&&!excluded.has(el.name)&&el.type!=='password');
   const snapshot=form=>fields(form).map(el=>({name:el.name,type:el.type,value:el.value,checked:el.checked}));
   const dirtySnapshot=form=>Array.from(form.elements).filter(el=>el.name&&el.type!=='submit'&&el.type!=='button').map(el=>({name:el.name,value:el.value,checked:el.checked}));
+  const capture=form=>Array.from(form.elements).filter(el=>el.name&&el.type!=='submit'&&el.type!=='button').map(el=>({el,name:el.name,value:el.value,checked:el.checked}));
   const key=form=>'rclone.ui.draft:'+location.pathname+location.search;
   function updateDirty(form){const dirty=JSON.stringify(dirtySnapshot(form))!==baselines.get(form);form.dataset.dirty=dirty?'1':'0';const hint=form.querySelector('[data-draft-state]');if(hint)hint.textContent=dirty?'有未保存的更改':'设置将在保存后生效';return dirty;}
   function saveDraft(form){updateDirty(form);if(!form.hasAttribute('data-draft-form'))return;try{sessionStorage.setItem(key(form),JSON.stringify({values:snapshot(form),tab:form.dataset.activeTab||''}));}catch(_){}}
@@ -42,19 +43,31 @@
       catch(error){if(error.name!=='AbortError')list.replaceChildren();}
     };
     input.addEventListener('input',()=>{clearTimeout(timer);timer=setTimeout(load,250);});input.addEventListener('focus',load);remote?.addEventListener('change',load);
-    window.addEventListener('pagehide',()=>{clearTimeout(timer);abort?.abort();},{once:true});
+    window.addEventListener('pagehide',()=>{clearTimeout(timer);abort?.abort();});
   }
   App.forms={
+    capture,
     markClean(form){
-      if(form.hasAttribute('data-ui-form'))form.querySelectorAll('input[type=password]').forEach(el=>el.value='');
-      for(const el of form.elements){
-        if('defaultValue'in el)el.defaultValue=el.value;
-        if('defaultChecked'in el)el.defaultChecked=el.checked;
-        if(el.tagName==='SELECT')for(const option of el.options)option.defaultSelected=option.selected;
+      return this.markSaved(form,capture(form));
+    },
+    markSaved(form,submitted,values={}){
+      if(!form.hasAttribute('data-edit-form'))return false;
+      const baseline=[];
+      for(const saved of submitted){
+        const {el,name}=saved,current={value:el.value,checked:el.checked};
+        const unchanged=current.value===saved.value&&current.checked===saved.checked;
+        const value=el.type==='password'&&form.hasAttribute('data-ui-form')?'':Object.hasOwn(values,name)?String(values[name]):saved.value;
+        if('defaultValue'in el)el.defaultValue=value;
+        if('defaultChecked'in el)el.defaultChecked=saved.checked;
+        if(el.tagName==='SELECT')for(const option of el.options)option.defaultSelected=option.value===value;
+        el.value=unchanged?value:current.value;
+        if('checked'in el)el.checked=unchanged?saved.checked:current.checked;
+        baseline.push({name,value,checked:saved.checked});
       }
-      baselines.set(form,JSON.stringify(dirtySnapshot(form)));form.dataset.dirty='0';
-      try{sessionStorage.removeItem(key(form));}catch(_){}
-      const hint=form.querySelector('[data-draft-state]');if(hint)hint.textContent='设置已保存';
+      baselines.set(form,JSON.stringify(baseline));dependencies(form);
+      const dirty=updateDirty(form);
+      if(dirty)saveDraft(form);else{try{sessionStorage.removeItem(key(form));}catch(_){}const hint=form.querySelector('[data-draft-state]');if(hint)hint.textContent='设置已保存';}
+      return dirty;
     },
     applyTab
   };

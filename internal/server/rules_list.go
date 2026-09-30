@@ -78,9 +78,11 @@ func (s *Server) rulesList(c *gin.Context) {
 		ignored := fileFailure.Ignored > 0 || tr.IgnoredFailures > 0 || run.ScanError != "" && run.ScanErrorIgnored
 		blocked := run.BlockReason != "" || tr.Blocked > 0
 		queued := a.Pending > 0 || count.Queued > 0
-		idle := a.Running == 0 && !queued
+		scanning := run.ScanStartedAt.After(run.ScanEndedAt)
+		running := a.Running > 0 || scanning
+		idle := !running && !queued
 		summary["all"]++
-		if a.Running > 0 {
+		if running {
 			summary["running"]++
 		}
 		if queued {
@@ -98,7 +100,7 @@ func (s *Server) rulesList(c *gin.Context) {
 		if idle {
 			summary["idle"]++
 		}
-		match := runtime == "" || runtime == "running" && a.Running > 0 || runtime == "queued" && queued || runtime == "failed" && failed || runtime == "blocked" && blocked || runtime == "idle" && idle || runtime == "paused" && !r.Enabled
+		match := runtime == "" || runtime == "running" && running || runtime == "queued" && queued || runtime == "failed" && failed || runtime == "blocked" && blocked || runtime == "idle" && idle || runtime == "paused" && !r.Enabled
 		if !match {
 			continue
 		}
@@ -111,7 +113,7 @@ func (s *Server) rulesList(c *gin.Context) {
 			if row.StatusLabel == "" {
 				row.StatusLabel = "执行中"
 			}
-		case run.ScanStartedAt.After(run.ScanEndedAt):
+		case scanning:
 			row.Status = "running"
 			row.StatusLabel = "扫描中"
 		case failed:

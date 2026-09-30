@@ -11,7 +11,8 @@
         if(button.dataset.detailTab==='logs')this.log.start();
       }));
       root.querySelector('[data-more-files]').addEventListener('click',()=>this.loadMore());
-      this.actionHandler=()=>this.refresh();root.addEventListener('app:action-success',this.actionHandler);
+      this.actionHandler=()=>{this.refreshAgain=true;this.refresh();};root.addEventListener('app:action-success',this.actionHandler);
+      root.querySelector('[data-detail-refresh]')?.addEventListener('click',this.actionHandler);
       this.refresh();
     }
     set(name,value){const el=this.root.querySelector('[data-job-value="'+name+'"]');if(el)el.textContent=value??'—';}
@@ -89,7 +90,7 @@
     }
     async refresh(){
       if(this.busy||this.destroyed)return;
-      this.busy=true;
+      clearTimeout(this.timer);this.busy=true;this.refreshAgain=false;let complete=false;
       try{
         const {data}=await App.request('/api/job?id='+encodeURIComponent(this.id),{signal:this.abort.signal});
         if(this.destroyed)return;this.update(data.view);
@@ -97,13 +98,15 @@
         if(data.view.status==='running'&&data.view.phase==='copying'){
           requests.push(App.request('/api/job/transfers?id='+encodeURIComponent(this.id),{signal:this.abort.signal}).then(({data})=>{if(this.destroyed)return;this.transfers=new Map((data.transfers||[]).map(t=>[t.name,t]));this.renderFiles();}));
         }else{this.transfers.clear();this.renderFiles();}
-        await Promise.all(requests);this.set('updated','刚刚更新');
-      }catch(error){if(error.name!=='AbortError'&&!this.destroyed)this.set('updated','更新暂时失败，保留上次结果');}
-      finally{this.busy=false;if(!this.destroyed&&!this.view?.terminal)this.timer=setTimeout(()=>this.refresh(),2000);}
+        await Promise.all(requests);if(this.destroyed)return;this.set('updated','刚刚更新');complete=true;
+      }catch(error){if(error.name!=='AbortError'&&!this.destroyed)this.set('updated',error.login?'登录已失效，请重新登录':'更新暂时失败，保留上次结果');}
+      finally{this.busy=false;if(!this.destroyed&&(this.refreshAgain||!complete||!this.view?.terminal))this.timer=setTimeout(()=>this.refresh(),this.refreshAgain?0:2000);}
     }
+    resume(){this.destroyed=false;this.abort=new AbortController();this.root.addEventListener('app:action-success',this.actionHandler);if(!this.root.querySelector('[data-detail-panel="logs"]').hidden)this.log.start();this.refresh();}
     destroy(){this.destroyed=true;clearTimeout(this.timer);this.abort.abort();this.log.destroy();this.root.removeEventListener('app:action-success',this.actionHandler);}
   };
   const pages=[];
   document.addEventListener('DOMContentLoaded',()=>document.querySelectorAll('main [data-job-detail]').forEach(root=>pages.push(new App.JobDetail(root))));
   window.addEventListener('pagehide',()=>pages.forEach(page=>page.destroy()));
+  window.addEventListener('pageshow',event=>{if(event.persisted)pages.forEach(page=>page.resume());});
 })();

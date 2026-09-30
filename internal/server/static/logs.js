@@ -81,4 +81,5 @@
     });
   });
   window.addEventListener('pagehide',()=>panels.forEach(p=>p.destroy()));
+  window.addEventListener('pageshow',event=>{if(event.persisted)panels.forEach(p=>p.start());});
 })();
