@@ -63,6 +63,7 @@ CREATE TABLE IF NOT EXISTS transfer_usage (
 );
 CREATE INDEX IF NOT EXISTS jobs_started_idx ON jobs(started_at DESC, job_id);
 CREATE INDEX IF NOT EXISTS jobs_queue_idx ON jobs(status, queue_next_at, created_at);
+CREATE INDEX IF NOT EXISTS jobs_retry_idx ON jobs(retry_of);
 CREATE INDEX IF NOT EXISTS files_group_idx ON files(rule_id, group_key, state);
 CREATE INDEX IF NOT EXISTS manifest_group_idx ON transfer_job_files(group_key, job_id);
 CREATE INDEX IF NOT EXISTS usage_window_idx ON transfer_usage(ts, rule_id, quota_group);

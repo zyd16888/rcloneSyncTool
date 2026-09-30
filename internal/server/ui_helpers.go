@@ -28,11 +28,12 @@ func uiTemplateFuncs() template.FuncMap {
 		known[name] = true
 	}
 	return template.FuncMap{
+		"staticURL": staticURL,
 		"icon": func(name string) template.HTML {
 			if !known[name] {
 				name = "info"
 			}
-			return template.HTML("<svg class='app-icon' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round' aria-hidden='true'><use href='/static/icons.svg#" + name + "'></use></svg>")
+			return template.HTML("<svg class='app-icon' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round' aria-hidden='true'><use href='" + staticURL("icons.svg") + "#" + name + "'></use></svg>")
 		},
 		"statusName": statusName, "statusClass": statusClass, "phaseName": phaseName,
 		"modeName": modeName, "sourcePath": sourcePath, "destinationPath": destinationPath,

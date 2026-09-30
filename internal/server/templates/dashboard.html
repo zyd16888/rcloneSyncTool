@@ -10,8 +10,8 @@
   <div class="app-filterbar mt-5"><select id="rtRule" class="select select-sm" aria-label="曲线规则"><option value="">全部规则</option>{{range .Rules}}<option value="{{.ID}}">{{.ID}}</option>{{end}}</select><select id="rtWindow" class="select select-sm" aria-label="曲线时间窗口"><option value="900">最近 15 分钟</option><option value="3600" selected>最近 1 小时</option><option value="21600">最近 6 小时</option><option value="86400">最近 24 小时</option></select><span class="app-small app-muted">从打开本页时开始采样</span></div>
   <canvas id="rtSpeed" class="w-full" style="height:240px" role="img" aria-label="传输速度曲线"></canvas>
 </details>
-<script src="/static/realtime_chart.js"></script>
-<script src="/static/dashboard.js" defer></script>
+<script src="{{staticURL "realtime_chart.js"}}"></script>
+<script src="{{staticURL "dashboard.js"}}" defer></script>
 {{end}}
 
 {{define "dashboard_live"}}

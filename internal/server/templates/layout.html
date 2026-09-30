@@ -8,15 +8,15 @@
     (()=>{try{const t=localStorage.getItem("ui.theme");if(t==="dark"||t==="winter")document.documentElement.dataset.theme=t;if(localStorage.getItem("ui.sidebarCollapsed")==="1")document.documentElement.classList.add("sidebar-collapsed");}catch(_){}})();
   </script>
   <title>{{.PageTitle}} · rclone 同步管理台</title>
-  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="/static/app.css">
-  <script src="/static/app.js" defer></script>
-  <script src="/static/logs.js" defer></script>
-  <script src="/static/job_view.js" defer></script>
-  <script src="/static/lists.js" defer></script>
-  <script src="/static/forms.js" defer></script>
+  <link rel="icon" href="{{staticURL "favicon.svg"}}" type="image/svg+xml">
+  <link rel="stylesheet" href="{{staticURL "app.css"}}">
+  <script src="{{staticURL "app.js"}}" defer></script>
+  <script src="{{staticURL "logs.js"}}" defer></script>
+  <script src="{{staticURL "job_view.js"}}" defer></script>
+  <script src="{{staticURL "lists.js"}}" defer></script>
+  <script src="{{staticURL "forms.js"}}" defer></script>
 </head>
-<body data-page="{{.Active}}">
+<body data-page="{{.Active}}" data-icon-url="{{staticURL "icons.svg"}}">
 {{if .IsLogin}}
   <header class="app-header"><span class="app-breadcrumb">rclone 同步管理台</span><button id="btnThemeToggle" class="btn btn-ghost btn-square" type="button" aria-label="切换深色模式">{{icon "moon"}}</button></header>
   <main class="app-main">{{template "content" .}}</main>

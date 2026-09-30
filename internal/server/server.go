@@ -86,6 +86,13 @@ func New(st *store.Store, supervisor *daemon.Supervisor, logDir string, appLogPa
 	r.Use(gin.Recovery())
 	r.Use(func(c *gin.Context) {
 		c.Writer.Header().Set("Cache-Control", "no-store")
+		if version, ok := staticVersions[c.Request.URL.Path]; ok && (c.Request.Method == http.MethodGet || c.Request.Method == http.MethodHead) {
+			c.Header("ETag", `"`+version+`"`)
+			c.Header("Cache-Control", "no-cache")
+			if c.Query("v") == version {
+				c.Header("Cache-Control", "public, max-age=31536000, immutable")
+			}
+		}
 		c.Next()
 	})
 

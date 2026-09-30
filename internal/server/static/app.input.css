@@ -88,6 +88,9 @@ h1,h2,h3,.font-bold { color:var(--app-text); }
 .status-pending,.status-blocked { color:var(--app-amber);background:var(--app-amber-bg); }
 .status-failed { color:var(--app-red);background:var(--app-red-bg); }
 .status-terminated,.status-idle,.status-paused { color:var(--app-muted);background:var(--app-soft); }
+.app-schedule-state { display:flex;width:fit-content;margin-top:6px;font-weight:600;border:1px solid currentColor; }
+.status-enabled { color:var(--app-green);background:var(--app-green-bg); }
+.status-disabled { color:var(--app-amber);background:var(--app-amber-bg); }
 .alert { display:flex;align-items:flex-start;gap:10px;overflow-wrap:anywhere;min-height:0;border:1px solid var(--app-border);border-radius:8px;box-shadow:none;font-size:13px;background:var(--app-soft);color:var(--app-text);padding:13px 16px; }
 .alert>span { min-width:0; }
 .alert-error { background:var(--app-red-bg);color:var(--app-red);border-color:transparent; }

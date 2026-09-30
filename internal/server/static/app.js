@@ -7,7 +7,7 @@
     svg.setAttribute('class','app-icon'); svg.setAttribute('viewBox','0 0 24 24');
     svg.setAttribute('fill','none'); svg.setAttribute('stroke','currentColor'); svg.setAttribute('stroke-width','1.8');
     svg.setAttribute('stroke-linecap','round');svg.setAttribute('stroke-linejoin','round');svg.setAttribute('aria-hidden','true');
-    const use=document.createElementNS(svg.namespaceURI,'use');use.setAttribute('href','/static/icons.svg#'+(iconNames.has(name)?name:'info'));svg.append(use);return svg;
+    const use=document.createElementNS(svg.namespaceURI,'use');use.setAttribute('href',(document.body.dataset.iconUrl||'/static/icons.svg')+'#'+(iconNames.has(name)?name:'info'));svg.append(use);return svg;
   };
   App.bytes = n => {
     const units=['B','KiB','MiB','GiB','TiB','PiB'];let value=Math.max(0,Number(n)||0),i=0;
